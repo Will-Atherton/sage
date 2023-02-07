@@ -511,6 +511,7 @@ def habib_maurer_algorithm(graph, g_classes=None):
 
     The Octahedral graph is not Prime::
 
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: print_md_tree(habib_maurer_algorithm(graphs.OctahedralGraph()))
         SERIES
          PARALLEL
@@ -525,6 +526,7 @@ def habib_maurer_algorithm(graph, g_classes=None):
 
     Tetrahedral Graph is Series::
 
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: print_md_tree(habib_maurer_algorithm(graphs.TetrahedralGraph()))
         SERIES
          0
@@ -534,6 +536,7 @@ def habib_maurer_algorithm(graph, g_classes=None):
 
     Modular Decomposition tree containing both parallel and series modules::
 
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: d = {2:[4,3,5], 1:[4,3,5], 5:[3,2,1,4], 3:[1,2,5], 4:[1,2,5]}
         sage: g = Graph(d)
         sage: print_md_tree(habib_maurer_algorithm(g))
@@ -548,6 +551,7 @@ def habib_maurer_algorithm(graph, g_classes=None):
 
     Graph from Marc Tedder implementation of modular decomposition::
 
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: d = {1:[5,4,3,24,6,7,8,9,2,10,11,12,13,14,16,17], 2:[1],
         ....:       3:[24,9,1], 4:[5,24,9,1], 5:[4,24,9,1], 6:[7,8,9,1],
         ....:       7:[6,8,9,1], 8:[6,7,9,1], 9:[6,7,8,5,4,3,1], 10:[1],
@@ -559,6 +563,7 @@ def habib_maurer_algorithm(graph, g_classes=None):
 
     Graph from the :wikipedia:`Modular_decomposition`::
 
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: d2 = {1:[2,3,4], 2:[1,4,5,6,7], 3:[1,4,5,6,7], 4:[1,2,3,5,6,7],
         ....:       5:[2,3,4,6,7], 6:[2,3,4,5,8,9,10,11],
         ....:       7:[2,3,4,5,8,9,10,11], 8:[6,7,9,10,11], 9:[6,7,8,10,11],
@@ -567,33 +572,11 @@ def habib_maurer_algorithm(graph, g_classes=None):
         sage: test_modular_decomposition(habib_maurer_algorithm(g), g)
         True
 
-    Tetrahedral Graph is Series::
-
-        sage: print_md_tree(habib_maurer_algorithm(graphs.TetrahedralGraph()))
-        SERIES
-         0
-         1
-         2
-         3
-
-    Modular Decomposition tree containing both parallel and series modules::
-
-        sage: d = {2:[4,3,5], 1:[4,3,5], 5:[3,2,1,4], 3:[1,2,5], 4:[1,2,5]}
-        sage: g = Graph(d)
-        sage: print_md_tree(habib_maurer_algorithm(g))
-        SERIES
-         PARALLEL
-          1
-          2
-         PARALLEL
-          3
-          4
-         5
-
     TESTS:
 
     Bad Input::
 
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: g = DiGraph()
         sage: habib_maurer_algorithm(g)
         Traceback (most recent call last):
@@ -602,6 +585,7 @@ def habib_maurer_algorithm(graph, g_classes=None):
 
     Empty Graph is Prime::
 
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: g = Graph()
         sage: habib_maurer_algorithm(g)
         PRIME []
@@ -610,7 +594,7 @@ def habib_maurer_algorithm(graph, g_classes=None):
     Ensure that a random graph and an isomorphic graph have identical modular
     decompositions. ::
 
-        sage: from sage.graphs.graph_decompositions.modular_decomposition import permute_decomposition
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: permute_decomposition(2, habib_maurer_algorithm, 20, 0.5)
     """
     if graph.is_directed():
@@ -1109,10 +1093,7 @@ class _TedderFactPermElement(_TedderTreeNode):
     def __repr__(self):
         result = "|"
         if self.index != -1:
-            if self.mu is not None:
-                result += "{Index=" + str(self.index) + " hasRightLayerNeighbor=" + str(self.has_right_layer_neighbor) + " neighbors="
-            else:
-                result += "{Index=" + str(self.index) + " neighbors="
+            result += "{Index=" + str(self.index) + " neighbors="
             if self.neighbors != []:
                 result += str(self.neighbors[0].index)
             for neighbor in self.neighbors[1:]:
@@ -1968,6 +1949,138 @@ class _TedderSubProblem(_TedderTreeNode):
         return result + "]"
 
 def tedder_algorithm(graph):
+    """
+    Compute the modular decomposition by the algorithm of Tedder
+
+    Compute the modular decomposition of the given graph by the algorithm of
+    Tedder [TCHP2008]_. The algorithm arbitrary selects a pivot vertex, say
+    `x`, and recursively computes the MD tree for its neighbourhood, `N(x)`,
+    and its non-neighbourhood, `\bar(N(x))`. It then constructs a factorizing
+    premutation, which is an ordering of MD trees s.t. the strong modules
+    containing `x` will be in order, and the strong modules not containing `x`
+    will be separate. The algorithm then identifies the strong modules, and 
+    assembles the tree. In order for the algorithm to work in linear time,
+    a custom data structure is used instead of the MD node class Node, and
+    post-processing then transforms the finalised data structure into the 
+    equivalent Node objects.
+
+    INPUT:
+
+    - ``graph`` -- the graph for which modular decomposition tree needs to be
+      computed
+
+    OUTPUT:
+
+    The modular decomposition tree of the graph.
+
+    EXAMPLES:
+
+    The Icosahedral graph is Prime::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: print_md_tree(tedder_algorithm(graphs.IcosahedralGraph()))
+        PRIME
+         2
+         3
+         9
+         6
+         8
+         1
+         10
+         7
+         4
+         0
+         5
+         11
+
+    The Octahedral graph is not Prime::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: print_md_tree(tedder_algorithm(graphs.OctahedralGraph()))
+        SERIES
+         PARALLEL
+          1
+          4
+         PARALLEL
+          2
+          3
+         PARALLEL
+          0
+          5
+
+    Tetrahedral Graph is Series::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: print_md_tree(tedder_algorithm(graphs.TetrahedralGraph()))
+        SERIES
+         2
+         0
+         1
+         3
+
+    Modular Decomposition tree containing both parallel and series modules::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: d = {2:[4,3,5], 1:[4,3,5], 5:[3,2,1,4], 3:[1,2,5], 4:[1,2,5]}
+        sage: g = Graph(d)
+        sage: print_md_tree(tedder_algorithm(g))
+        SERIES
+         PARALLEL
+          3
+          4
+         PARALLEL
+          1
+          2
+         5
+
+    Graph from Marc Tedder implementation of modular decomposition::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: d = {1:[5,4,3,24,6,7,8,9,2,10,11,12,13,14,16,17], 2:[1],
+        ....:       3:[24,9,1], 4:[5,24,9,1], 5:[4,24,9,1], 6:[7,8,9,1],
+        ....:       7:[6,8,9,1], 8:[6,7,9,1], 9:[6,7,8,5,4,3,1], 10:[1],
+        ....:       11:[12,1], 12:[11,1], 13:[14,16,17,1], 14:[13,17,1],
+        ....:       16:[13,17,1], 17:[13,14,16,18,1], 18:[17], 24:[5,4,3,1]}
+        sage: g = Graph(d)
+        sage: test_modular_decomposition(tedder_algorithm(g), g)
+        True
+
+    Graph from the :wikipedia:`Modular_decomposition`::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: d2 = {1:[2,3,4], 2:[1,4,5,6,7], 3:[1,4,5,6,7], 4:[1,2,3,5,6,7],
+        ....:       5:[2,3,4,6,7], 6:[2,3,4,5,8,9,10,11],
+        ....:       7:[2,3,4,5,8,9,10,11], 8:[6,7,9,10,11], 9:[6,7,8,10,11],
+        ....:       10:[6,7,8,9], 11:[6,7,8,9]}
+        sage: g = Graph(d2)
+        sage: test_modular_decomposition(tedder_algorithm(g), g)
+        True
+
+    TESTS:
+
+    Bad Input::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: g = DiGraph()
+        sage: tedder_algorithm(g)
+        Traceback (most recent call last):
+        ...
+        ValueError: Graph must be undirected
+
+    Empty Graph is Prime::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: g = Graph()
+        sage: tedder_algorithm(g)
+        PRIME []
+
+
+    Ensure that a random graph and an isomorphic graph have identical modular
+    decompositions. ::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: permute_decomposition(2, tedder_algorithm, 20, 0.5)
+    """
     # Some basic graph checks
     if graph.is_directed():
         raise ValueError("Graph must be undirected")
@@ -2016,8 +2129,155 @@ def tedder_algorithm(graph):
 # Overall Function
 # ============================================================================
 
-modular_decomposition = habib_maurer_algorithm
+def modular_decomposition(graph, algorithm = "habib_maurer"):
+    """
+    Compute the modular decomposition of the graph
 
+    INPUT:
+
+    - ``graph`` -- the graph for which modular decomposition tree needs to be
+      computed
+
+    - ``algorithm`` -- string (default ``habib_maurer``). Either ``habib_maurer`` or
+      ``tedder``. Decides with which algorithm to compute the modular decomposition
+
+    OUTPUT:
+
+    The modular decomposition tree of the graph.
+
+    EXAMPLES:
+
+    The Icosahedral graph is Prime::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: print_md_tree(modular_decomposition(graphs.IcosahedralGraph()))
+        PRIME
+         2
+         3
+         9
+         6
+         8
+         1
+         10
+         7
+         4
+         0
+         5
+         11
+
+    The Octahedral graph is not Prime (using tedder algorithm)::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: print_md_tree(modular_decomposition(graphs.OctahedralGraph(), "tedder"))
+        SERIES
+         PARALLEL
+          1
+          4
+         PARALLEL
+          2
+          3
+         PARALLEL
+          0
+          5
+
+    Tetrahedral Graph is Series::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: print_md_tree(modular_decomposition(graphs.TetrahedralGraph(), "habib_maurer"))
+        SERIES
+         2
+         0
+         1
+         3
+
+    Modular Decomposition tree containing both parallel and series modules::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: d = {2:[4,3,5], 1:[4,3,5], 5:[3,2,1,4], 3:[1,2,5], 4:[1,2,5]}
+        sage: g = Graph(d)
+        sage: print_md_tree(modular_decomposition(g))
+        SERIES
+         PARALLEL
+          3
+          4
+         PARALLEL
+          1
+          2
+         5
+
+    Graph from Marc Tedder implementation of modular decomposition (using tedder algorithm)::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: d = {1:[5,4,3,24,6,7,8,9,2,10,11,12,13,14,16,17], 2:[1],
+        ....:       3:[24,9,1], 4:[5,24,9,1], 5:[4,24,9,1], 6:[7,8,9,1],
+        ....:       7:[6,8,9,1], 8:[6,7,9,1], 9:[6,7,8,5,4,3,1], 10:[1],
+        ....:       11:[12,1], 12:[11,1], 13:[14,16,17,1], 14:[13,17,1],
+        ....:       16:[13,17,1], 17:[13,14,16,18,1], 18:[17], 24:[5,4,3,1]}
+        sage: g = Graph(d)
+        sage: test_modular_decomposition(modular_decomposition(g, "tedder"), g)
+        True
+
+    TESTS:
+
+    Bad Input (digraph)::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: g = DiGraph()
+        sage: modular_decomposition(g)
+        Traceback (most recent call last):
+        ...
+        ValueError: Graph must be undirected
+
+    Bad Input (bad algorithm field)::
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: g = Graph()
+        sage: modular_decomposition(g, "wrong")
+        Traceback (most recent call last):
+        ...
+        ValueError: Algorithm must be "habib_maurer" or "tedder"
+
+    Empty Graph is Prime (using tedder algorithm)::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: g = Graph()
+        sage: modular_decomposition(g, "tedder")
+        PRIME []
+
+    Graph from the :wikipedia:`Modular_decomposition`::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: d2 = {1:[2,3,4], 2:[1,4,5,6,7], 3:[1,4,5,6,7], 4:[1,2,3,5,6,7],
+        ....:       5:[2,3,4,6,7], 6:[2,3,4,5,8,9,10,11],
+        ....:       7:[2,3,4,5,8,9,10,11], 8:[6,7,9,10,11], 9:[6,7,8,10,11],
+        ....:       10:[6,7,8,9], 11:[6,7,8,9]}
+        sage: g = Graph(d2)
+        sage: test_modular_decomposition(modular_decomposition(g, "habib_maurer"), g)
+        True
+
+    Graph from the :wikipedia:`Modular_decomposition` (using tedder algorithm)::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: d2 = {1:[2,3,4], 2:[1,4,5,6,7], 3:[1,4,5,6,7], 4:[1,2,3,5,6,7],
+        ....:       5:[2,3,4,6,7], 6:[2,3,4,5,8,9,10,11],
+        ....:       7:[2,3,4,5,8,9,10,11], 8:[6,7,9,10,11], 9:[6,7,8,10,11],
+        ....:       10:[6,7,8,9], 11:[6,7,8,9]}
+        sage: g = Graph(d2)
+        sage: test_modular_decomposition(modular_decomposition(g, "tedder"), g)
+        True
+
+
+    Ensure that a random graph and an isomorphic graph have identical modular
+    decompositions (with both algorithms). ::
+
+        sage: from sage.graphs.graph_decompositions.modular_decomposition import *
+        sage: permute_decomposition(2, modular_decomposition, 20, 0.5)
+    """
+    if algorithm == "habib_maurer":
+        return habib_maurer_algorithm(graph)
+    elif algorithm == "tedder":
+        return tedder_algorithm(graph)
+    else:
+        raise ValueError('Algorithm must be "habib_maurer" or "tedder"')
 
 # ============================================================================
 # Below functions are implemented to test the modular decomposition tree
