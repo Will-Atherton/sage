@@ -1165,7 +1165,7 @@ class _TedderSubProblem(_TedderTreeNode):
         
         return replacement
 
-    def solve(self, i):
+    def solve(self):
         # Compute the MD tree for this subproblem. The root of the MD tree becomes the sole child of this subproblem
         # OUTPUT:
         # - The root of the constructed MD tree
@@ -1185,10 +1185,8 @@ class _TedderSubProblem(_TedderTreeNode):
         this_problem = self.pivot_problem()
         # Solve the sub-problems defined by the layers
         current_sub_problem = this_problem.first_child
-        k = i
         while current_sub_problem is not None:
-            k += 1
-            solved_root = current_sub_problem.solve(k)
+            solved_root = current_sub_problem.solve()
             current_sub_problem = solved_root.parent.right_sibling
         
         # MD tree of all but the first component of this sub-problem's graph has already been computed. Remove it for now, 
@@ -2108,8 +2106,568 @@ def tedder_algorithm(graph):
         # Add vertex as a child to the subproblem
         main_problem.add_child(node)
 
-    # Solve the subproblem
-    tedder_root = main_problem.solve(1)
+    # Recursively solve the subproblems
+    def _rec_solve(main_problem):
+        # Compute the MD tree for this subproblem. The root of the MD tree becomes the sole child of this subproblem
+        # OUTPUT:
+        # - The root of the constructed MD tree
+        
+        # We are currently solving this subproblem
+        main_problem.active = True
+        
+        if main_problem.has_only_one_child():
+            # Subproblem (and thus MD tree) only contains a single node, so nothing to do except process the pivot to
+            # refine the sub-problems in the rest of the recursion tree
+            main_problem.pivot = main_problem.first_child
+            main_problem.process_neighbors(main_problem.pivot)
+            main_problem.pivot.visited = True
+            return main_problem.first_child
+        
+        # Pivot this sub-problem, and refine the sub-problems in the rest of the recursion tree.
+        # main_problem = main_problem.pivot_problem()
+        pivot = main_problem.first_child
+        pivot.visited = True
+        neighbor_problem = main_problem.process_neighbors(pivot)
+        pivot.remove()
+        pivot_problem = _TedderSubProblem(pivot)
+
+        # Pivot forms part of the first connected component of the current subproblem's graph
+        pivot_problem.connected = True
+
+        # Replace the current subproblem with something new, but sharing the same attributes. See comment below regarding
+        # reuse of current recursive subproblem
+        replacement = _TedderSubProblem()
+        replacement.copy(main_problem)
+        main_problem.replace_with(replacement)
+        replacement.pivot = pivot
+
+        # Must reuse the current subproblem to act as non-neighbor partition of the current recursive subproblem in order
+        # to achieve linear-time
+        if not main_problem.has_no_children():
+            main_problem.clear_attributes()
+            replacement.add_child(main_problem)
+        
+        replacement.add_child(pivot_problem)
+        
+        if not neighbor_problem.has_no_children():
+            # Neighbors connected to pivot and so also part of first connected component of current subproblem's graph
+            neighbor_problem.connected = True
+            replacement.add_child(neighbor_problem)
+        
+        main_problem = replacement
+
+        # main_problem should have a pivot now
+        assert(main_problem.pivot is not None)
+
+        # Solve the sub-problems defined by the layers
+        current_sub_problem = main_problem.first_child
+        while current_sub_problem is not None:
+            solved_root = _rec_solve(current_sub_problem)
+            # _rec_solve shouldn't return None
+            assert(solved_root is not None)
+            current_sub_problem = solved_root.parent.right_sibling
+        
+        # MD tree of all but the first component of this sub-problem's graph has already been computed. Remove it for now, 
+        # we merge the two MD trees later
+        #extra_components = main_problem.remove_extra_components()
+        current_sub_problem = main_problem.first_child
+        while current_sub_problem is not None and current_sub_problem.connected:
+            current_sub_problem = current_sub_problem.right_sibling
+        
+        if current_sub_problem is not None:
+            current_sub_problem.remove()
+            root = current_sub_problem.first_child
+            root.remove()
+            extra_components = root
+        else:
+            extra_components = None
+        
+        # Replace the layers by their recursively computed solutions
+        #main_problem.remove_layers()
+        current_layer = main_problem.first_child
+        while current_layer is not None:
+            next_layer = current_layer.right_sibling
+            current_layer.replace_with(current_layer.first_child)
+            current_layer = next_layer
+
+
+        # For each vertex x in this subproblem, looks at alpha(x), and if y \in alpha(x), adds x to alpha(y), 
+        # then removes duplicates
+        #main_problem.complete_alpha_lists()
+
+        # Completes the list (possibly creating duplicate entries within them).
+        leaves_list = main_problem.get_leaves()
+        for leaf in leaves_list:
+            alpha_list = leaf.alpha
+            for alpha_node in alpha_list:
+                alpha_node.alpha.append(leaf)
+        
+        # Removes duplicate entries in the lists.
+        for leaf in leaves_list:
+            alpha_list = leaf.alpha
+            i = 0
+            while i < len(alpha_list):
+                current_alpha_neighbor = alpha_list[i]
+                if current_alpha_neighbor.is_marked():
+                    alpha_list.pop(i)
+                else:
+                    current_alpha_neighbor.num_marks += 1
+                    i += 1
+            for alpha in alpha_list:
+                alpha.clear_marks()
+
+        """
+        Number the nodes in the recursively computed MD trees for this subproblem. Nodes in the tree to the left of x are
+        numbered by co-component and those in trees to the right of x are numbered by component. The numbering starts at 0,
+        and the tree to the left x is considered first. All nodes in a particular (co-)component receive the same number,
+        which is one more than the previous (co-)component. The roots of trees are therefore left unnumbered sometimes.
+        """
+        #main_problem.number_by_comp()
+        comp_number = 0
+        after_pivot = False
+        current_root = main_problem.first_child
+        while current_root is not None:
+            if current_root == main_problem.pivot:
+                after_pivot = True
+            if after_pivot:
+                comp_number += current_root.number_comps(comp_number, NodeType.PARALLEL)
+            else:
+                comp_number += current_root.number_comps(comp_number, NodeType.SERIES)
+            current_root = current_root.right_sibling
+
+        """
+        Number this subproblem's recursively computed MD trees one by one, starting at 0 for the tree to the left
+        of x; every node in the tree is assigned that tree's number.
+        """
+        #main_problem.number_by_tree()
+        tree_number = 0
+        current_root = main_problem.first_child
+        while current_root is not None:
+            current_root.set_tree_number_for_subtree(tree_number)
+            current_root = current_root.right_sibling
+            tree_number += 1
+        
+        # Get the factorizing permutation
+
+        # Every vertex in this subproblem uses its active edges to refine the recursively computed MD trees other than its own.
+        #main_problem.refinement()
+        leaf_list = main_problem.get_leaves()
+        for leaf in leaf_list:
+            #main_problem.refine_with(leaf)
+            #Effect the changes that result from a single vertex refining with it's active edges
+            refiner = leaf
+            sub_tree_roots = main_problem.get_max_subtrees(refiner.alpha)
+            sibling_groups = main_problem.group_sibling_nodes(sub_tree_roots)
+            # Remove roots of trees.
+            i = 0
+            while i < len(sibling_groups):
+                if sibling_groups[i].is_root():
+                    sibling_groups.pop(i)
+                else:
+                    i += 1
+        
+            """
+            Split trees when sibling groups are children of the root, and split nodes when not. In the latter case, mark the two
+            nodes resulting from the split, plus all their ancestors as having been marked, also mark the children of all prime
+            ancestors.
+            """
+            for current in sibling_groups:
+                # Determine the split type.
+                pivot_tree_number = main_problem.pivot.tree_number
+                refiner_tree_number = refiner.tree_number
+                current_tree_number = current.tree_number
+                if current_tree_number < pivot_tree_number or refiner_tree_number < current_tree_number:
+                    split_type = NodeSplit.LEFT_SPLIT
+                else:
+                    split_type = NodeSplit.RIGHT_SPLIT
+                current_parent = current.parent
+                if current_parent.is_root():
+                    # Parent is a root, must split the tree.
+                    if split_type == NodeSplit.LEFT_SPLIT:
+                        current.insert_before(current_parent)
+                    else:
+                        current.insert_after(current_parent)
+                    new_sibling = current_parent
+                    if current_parent.has_only_one_child():
+                        current_parent.replace_this_by_its_children()
+                    if current_parent.has_no_children():
+                        current_parent.remove()
+                else:
+                    # Parent is not a root, must split the node.
+                    current.remove()
+                    if current_parent.has_only_one_child():
+                        new_sibling = current_parent.first_child
+                        current_parent.add_child(current)
+                    else:
+                        """
+                        To achieve linear time, must reuse the parent node to represent the non-neighbor partition. See pivot()
+                        for another example of this trick.
+                        """
+                        replacement = _TedderMDNode()
+                        replacement.copy(current_parent)
+                        current_parent.replace_with(replacement)
+                        replacement.add_child(current)
+                        replacement.add_child(current_parent)
+                        new_sibling = current_parent
+                current.add_split_mark(split_type)
+                new_sibling.add_split_mark(split_type)
+                current.mark_ancestors_by_split(split_type)
+                new_sibling.mark_ancestors_by_split(split_type)
+
+        """
+        All nodes labelled by one of the two split marks are promoted to depth-0 in this subproblem's forest. First the
+        nodes marked by left splits are promoted, then those marked by right splits. Nodes without children or only a 
+        single child are deleted, and in the latter instance replaced by their lone child.
+        """   
+        #main_problem.promotion()
+        main_problem.promote_one_direction(NodeSplit.LEFT_SPLIT)
+        main_problem.promote_one_direction(NodeSplit.RIGHT_SPLIT)
+        main_problem.clear_split_marks()
+
+        # Use the factorizing permutation resulting from promotion, the active edges between the vertices,
+        # and the (co-)components calcualted recursively to identify and delineate the strong modules
+        # containing x, then build the tree
+        #main_problem.delineation()
+
+        """
+        Replace each tree in this subproblem's forest with a _TedderFactPermElement object, making the root of the tree
+        the child of the _TedderFactPermElement. The new _TedderFactPermElements are numbered from left to right starting
+        at 0, and these numbers are used as their index.
+        """
+        current = main_problem.first_child
+        num_fact_perm_elements = 0
+        while current is not None:
+            next_node = current.right_sibling 
+            new_element = _TedderFactPermElement(num_fact_perm_elements)
+            new_element.insert_before(current)
+            new_element.add_child(current)
+            num_fact_perm_elements += 1
+            current = next_node
+
+        # There should be at least one _TedderFactPermElement
+        assert(main_problem.first_child is not None)
+
+        """
+        For each co-component of G[N(x)], determine if some portion of it appears as part of a factorizing permutation
+        element to its left.
+
+        We take advantage of the fact that co-components of G[N(x)] appear consecutively and all nodes within them are
+        numbered according to their membership in these co-components.
+        """
+        current = main_problem.first_child
+        last_comp_num = -1
+
+        while current.first_child != main_problem.pivot:
+            current_comp_num = current.first_child.comp_number
+            if last_comp_num != -1 and last_comp_num == current_comp_num:
+                current.has_left_co_comp_fragment = True
+            last_comp_num = current_comp_num
+            current = current.right_sibling
+
+        """
+        For the components of G[N_2] (the vertices distance 2 from x), determine if some portion of it appears as part
+        of a factorizing permutation element to its right.
+
+        We use an approach similar to that applied above
+        """
+        current = main_problem.pivot.parent.right_sibling
+        last = None
+        last_comp_num = -1
+        while current is not None:
+            current_comp_num = current.first_child.comp_number
+            if last_comp_num != -1 and last_comp_num == current_comp_num:
+                last.has_right_comp_fragment = True
+            last = current
+            last_comp_num = current_comp_num
+            current = current.right_sibling
+
+        # For the factorizing permutation elements of G[N_2] (vertices distance 2 from x), determine if each has an
+        # edge to N_3 (vertices distance 3 from x)
+        current = main_problem.pivot.parent.right_sibling
+        while current is not None:
+            current_tree = current.first_child
+            current_tree_num = current_tree.tree_number
+            current_leaves_list = current_tree.get_leaves()
+            for leaf in current_leaves_list:
+                alpha_list = leaf.alpha
+                for alpha in alpha_list:
+                    if alpha.tree_number > current_tree_num:
+                        current.has_right_layer_neighbor = True
+            current = current.right_sibling
+
+        """
+        Determine the edges between factorizing permutation elements on either side of the pivot and explicitly add
+        these edges as adjacencies of the factorizing permutation elements in question. 
+        Two factorizing permutation elements are considered adjacent if there is a join between the leaves/vertices in the
+        trees forming them
+        """
+        # Change the comp_number of each vertex to the index of the factorizing permutation element to which it belongs
+        current_element = main_problem.first_child
+        while current_element is not None:
+            leaves_list = current_element.get_leaves()
+            for leaf in leaves_list:
+                leaf.comp_number = current_element.index
+            current_element = current_element.right_sibling
+        
+        # Determine size of each factorizing permutation element.
+        fact_perm_list = main_problem.build_fact_perm_list()
+        element_sizes = []
+        for element in fact_perm_list:
+            element_sizes.append(len(element.get_leaves()))
+
+        # Add a neighbor every time there is an edge between factorizing permutation elements on either side of the pivot
+        current_element = main_problem.first_child
+        while current_element is not None:
+            leaves_list = current_element.get_leaves()
+            for leaf in leaves_list:
+                alpha_list = leaf.alpha
+                for alpha_element in alpha_list:
+                    current_element.neighbors.append(fact_perm_list[alpha_element.comp_number])
+            current_element = current_element.right_sibling
+        
+        # Replace the edges added above with edges if a join exists
+        current_element = main_problem.first_child
+        while current_element is not None:
+            # Count the edges added above and remove duplicates
+            neighbors_list = current_element.neighbors
+            i = 0
+            while i < len(neighbors_list):
+                current_neighbor = neighbors_list[i]
+                if current_neighbor.is_marked():
+                    neighbors_list.pop(i)
+                else:
+                    i += 1
+                current_neighbor.num_marks += 1
+            current_element.neighbors = neighbors_list
+
+            # Add the edge if a join is found to exist
+            new_neighbors = []
+            for neighbor in neighbors_list:
+                my_size = element_sizes[current_element.index]
+                neighbor_size = element_sizes[neighbor.index]
+                if my_size * neighbor_size == neighbor.num_marks:
+                    # There is a join
+                    new_neighbors.append(neighbor)
+                neighbor.clear_marks()
+            current_element.replace_neighbors(new_neighbors)
+            current_element = current_element.right_sibling
+
+        # Computes the mu-value for each factorizing permutation element
+
+        first_element = main_problem.first_child
+        current = first_element
+        pivot_element = main_problem.pivot.parent
+        
+        # Initialize mu-values for those right of pivot; this is their default value
+        while current is not None:
+            current.mu = first_element
+            current = current.right_sibling
+        
+        # mu-values determined only by looking at elements to the left of the pivot
+        current = main_problem.first_child
+        while current != pivot_element:
+            next_element = current.right_sibling
+            neighbor_list = current.neighbors
+            for neighbor in neighbor_list:
+                # Neighbor to the left of pivot is universal to all up to current, and also adjacent to current, 
+                # so mu gets updated to next_element
+                if neighbor.mu.index == current.index:
+                    neighbor.mu = next_element
+                
+                # Current has an edge past previous farthest edge, so must update mu.
+                if neighbor.index > current.mu.index:
+                    current.mu = neighbor
+            current = next_element
+
+        """
+        For each strong module containing x, insert a pair of markers to delineate the module; one marker is inserted 
+        immediately to the left of the module's left boundary, and another immediately to the right of the module's 
+        right boundary. Markers are _TedderFactPermElements whose index is -1
+        """
+        pivot_element = main_problem.pivot.parent
+        # Find the last element in the permutation
+        last_element = pivot_element
+        while last_element.right_sibling is not None:
+            last_element = last_element.right_sibling
+        
+        first_element = main_problem.first_child
+
+        # Current boundaries of module currently being formed.
+        left = pivot_element.left_sibling
+        right = pivot_element.right_sibling
+
+        # The boundaries of the last module created
+        left_last_in = pivot_element
+        right_last_in = pivot_element
+        # Delineates the module one at a time
+        while left is not None or right is not None:
+            series_module_formed = False
+
+            # If a series module is possible, greedily adds the elements composing it
+            # right_last_in shouldn't be None at this point
+            while (left is not None and
+                    left.mu.index <= right_last_in.index and
+                    not left.has_left_co_comp_fragment):
+                series_module_formed = True
+                left_last_in = left
+                left = left.left_sibling
+            
+            parallel_module_formed = False
+            
+            # If a parallel module is possible (and a series module has not already been formed), greedily adds the 
+            # elements composing it
+            # left_last_in shouldn't be None at this point
+            while (not series_module_formed and right is not None and
+                    right.mu.index >= left_last_in.index and
+                    not right.has_right_comp_fragment and 
+                    not right.has_right_layer_neighbor):
+                parallel_module_formed = True
+                right_last_in = right
+                right = right.right_sibling
+            
+            left_queue = []
+            if not series_module_formed and not parallel_module_formed:
+                # Neither a series or parallel module could be formed, so must form a prime module (neither left nor 
+                # will be None), which must contain the first co-component to the left of the pivot.
+                assert(left is not None)
+                assert(right is not None)
+                while True:
+                    left_queue.append(left)
+                    left_last_in = left
+                    left = left.left_sibling
+                    if not left_last_in.has_left_co_comp_fragment:
+                        break
+            
+            right_queue = []
+            has_right_edge = False
+
+            # Add elements to the prime module one at a time using a forcing rule
+            while len(left_queue) != 0 or len(right_queue) != 0:
+                # Add elements from the left of the pivot
+                while len(left_queue) != 0:
+                    current_left = left_queue.pop(0)
+
+                    # Must add all elements up to mu once current_left is included in the module
+                    while current_left.mu.index > right_last_in.index:
+                        # Once part of a component is added, all of it must be added
+                        while True:
+                            right_queue.append(right)
+                            right_last_in = right
+                            right = right.right_sibling
+                            if right_last_in.has_right_layer_neighbor:
+                                has_right_edge = True
+                            if not right_last_in.has_right_comp_fragment:
+                                break
+                
+                # Add elements to the right of the pivot
+                while len(right_queue) != 0:
+                    current_right = right_queue.pop(0)
+
+                    # Must add all elements up to mu once current_right is included in the module
+                    while current_right.mu.index < left_last_in.index:
+                        # Once part of a co-component is added, all of it must be added
+                        while True:
+                            left_queue.append(left)
+                            left_last_in = left
+                            left = left.left_sibling
+                            if not left_last_in.has_left_co_comp_fragment:
+                                break
+        
+            # Added to the module an element to the right of x with an edge to a layer to its right, so the module must
+            # be the entire graph in this case
+            if has_right_edge:
+                left_last_in = first_element
+                right_last_in = last_element
+                left = None
+                right = None
+            
+            # Delineate the module just found
+            left_boundary = _TedderFactPermElement(-1)
+            right_boundary = _TedderFactPermElement(-1)
+            left_boundary.insert_before(left_last_in)
+            right_boundary.insert_after(right_last_in)
+
+        """
+        Take the factorizing permutation with the strong modules containing x properly delineated and assemble the
+        MD tree. Create a spline of new modules for each strong module containing x, and affixe to these the 
+        subtrees forming the permutation, based on the position of each subtree relative to the nested strong modules
+        containing x.
+        Replace the factorizing permutation within the current subproblem with the MD tree assembled. That is, the
+        subproblem is made to have one child, the root of the MD tree constructed.
+        """
+        #main_problem.assemble_tree()
+        left = main_problem.pivot.parent.left_sibling
+        right = main_problem.pivot.parent.right_sibling
+
+        # Smallest strong module containing x is x itself
+        last_module = main_problem.pivot
+
+        while left is not None or right is not None:
+            # Create the spine one module at a time
+            new_module = _TedderMDNode()
+            new_module.add_child(last_module)
+
+            added_pivot_neighbors = False
+            added_pivot_non_neighbors = False
+
+            # Add the subtrees of the new module from N(x)
+            while left.index != -1:
+                new_module.add_children_from(left)
+                old_left = left
+                left = left.left_sibling
+                old_left.remove()
+                added_pivot_neighbors = True
+            # Add the subtrees of the new module from /N(x)
+            while right.index != -1:
+                new_module.add_children_from(right)
+                old_right = right
+                right = right.right_sibling
+                old_right.remove()
+                added_pivot_non_neighbors = True
+            
+            if added_pivot_neighbors and added_pivot_non_neighbors:
+                new_module.type = NodeType.PRIME
+            elif added_pivot_neighbors:
+                new_module.type = NodeType.SERIES
+            else:
+                new_module.type = NodeType.PARALLEL
+            left = left.left_sibling
+            right = right.right_sibling
+            last_module = new_module
+        main_problem.replace_children_with(last_module)
+
+        # Remove consecutively appearing degenerate nodes of the same type in this sub-problem's MD tree
+        #main_problem.remove_degenerate_duplicates()
+        main_problem.first_child.remove_degenerate_duplicates_from_subtree()
+
+        """
+        Take the MD tree for this sub-problem and merge it with the MD tree rooted at the supplied node. If the roots
+        of both trees are parallel, then the former's children are made children of the latter. Otherwise, a new root 
+        is created with its children being the roots of hte two trees in question. The tree resulting from this merge 
+        becomes the MD tree of this subproblem.
+        """
+        #main_problem.merge_components(extra_components)
+        first_component = main_problem.first_child
+        if extra_components is not None and extra_components.type is NodeType.PARALLEL:
+            if first_component.type is NodeType.PARALLEL:
+                extra_components.add_children_from(first_component)
+            else:
+                extra_components.add_child(first_component)
+            main_problem.add_child(extra_components)
+        elif extra_components is not None:
+            new_root = _TedderMDNode(NodeType.PARALLEL)
+            new_root.add_child(first_component)
+            new_root.add_child(extra_components)
+            main_problem.add_child(new_root)
+
+        # Must reset fields to have recursion continue to work
+        # Do not reset 'visited' field since we need to know which nodes have been pivots for alpha-list calculations
+        #main_problem.clear_all_but_visited()
+        main_problem.first_child.clear_all()
+
+        return main_problem.first_child
+    
+    tedder_root = _rec_solve(main_problem)
 
     # Post-processing -- turn the _TedderMDNodes and _TedderMDLeafNodes into Nodes using a recursive helper function
     def _recursive_tedder_to_md(root):
@@ -2152,18 +2710,18 @@ def modular_decomposition(graph, algorithm = "habib_maurer"):
         sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: print_md_tree(modular_decomposition(graphs.IcosahedralGraph()))
         PRIME
+         1
+         5
+         7
+         8
+         11
+         0
          2
+         6
          3
          9
-         6
-         8
-         1
-         10
-         7
          4
-         0
-         5
-         11
+         10
 
     The Octahedral graph is not Prime (using tedder algorithm)::
 
@@ -2185,9 +2743,9 @@ def modular_decomposition(graph, algorithm = "habib_maurer"):
         sage: from sage.graphs.graph_decompositions.modular_decomposition import *
         sage: print_md_tree(modular_decomposition(graphs.TetrahedralGraph(), "habib_maurer"))
         SERIES
-         2
          0
          1
+         2
          3
 
     Modular Decomposition tree containing both parallel and series modules::
@@ -2198,11 +2756,11 @@ def modular_decomposition(graph, algorithm = "habib_maurer"):
         sage: print_md_tree(modular_decomposition(g))
         SERIES
          PARALLEL
-          3
-          4
-         PARALLEL
           1
           2
+         PARALLEL
+          3
+          4
          5
 
     Graph from Marc Tedder implementation of modular decomposition (using tedder algorithm)::
