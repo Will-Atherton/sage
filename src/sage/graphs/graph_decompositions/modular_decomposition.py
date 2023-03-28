@@ -638,42 +638,158 @@ def habib_maurer_algorithm(graph, g_classes=None):
                      for sg in g_comp.connected_components()]
     return root
 
-# ============================================================================
+# ==============================================================================
 # Tedder Algorithm
-# ============================================================================
+# ==============================================================================
 class _TedderTreeNode():
+    """
+    The main tree node class for the Tedder algorithm, used as a base for which
+    the other node classes inherit from.
+    Implements the children of a node as a doubly linked list. Each node stores 
+    the leftmost of its children, the number of children it has, and the left 
+    and right siblings of the node.
+    Nodes are added as the leftmost child (the first in the linked list)
+    """
 
     def __init__(self):
         self.parent = None
+        # - ``parent`` -- _TedderTreeNode, the parent of this node in the tree
         self.first_child = None
+        # - ``first_child`` -- _TedderTreeNode, the leftmost child of this node
         self.left_sibling = None
+        # - ``left_sibling`` -- _TedderTreeNode, the left sibling of this node
         self.right_sibling = None
+        # - ``right_sibling`` -- _TedderTreeNode, the right sibling of this node
         self.num_children = 0
+        # - ``num_children`` -- Integer, the number of children this node has
     
     def add_child(self, child):
-        # Adds a child node (child) as the first child of this node
-        # INPUT:
-        # - 'child' -- _TedderTreeNode
+        """
+        Adds a child node (``child``) as the leftmost child of this node, after
+        removing it from where it currently is.
+
+        INPUT:
+        
+        - ``child`` -- _TedderTreeNode
+
+        EXAMPLES:
+
+        Series of adding children (Using _TedderMDLeafNode to show order)::
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode, _TedderMDLeafNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n3 = _TedderMDLeafNode(1)
+            sage: n2.add_child(n3)
+            sage: print(n2)
+            {1}
+            sage: n1.add_child(n2)
+            sage: print(n1)
+            {{1}}
+            sage: n4 = _TedderMDLeafNode(2)
+            sage: n1.add_child(n4)
+            sage: n5 = _TedderMDLeafNode(3)
+            sage: n1.add_child(n5)
+            sage: print(n1)
+            {3, 2, {1}}
+
+        Adding a child removes it from where it is currently::
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: print(n1)
+            {{}}
+            sage: n3 = _TedderTreeNode()
+            sage: n3.add_child(n2)
+            sage: print(n1)
+            {}
+            sage: print(n3)
+            {{}}
+        """
+        # Remove ``child`` from where it is currently
         child.remove()
+
+        # Add child as the first child, and fix the pointers
         if self.first_child is not None:
             self.first_child.left_sibling = child
             child.right_sibling = self.first_child
         self.first_child = child
         child.parent = self
+
+        # This node now has one more child.
         self.num_children += 1
     
     def has_no_children(self):
+        """
+        Returns True if this node has no children, and False otherwise
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n1.has_no_children()
+            True
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n1.has_no_children()
+            False
+        """
         return self.num_children == 0
     
     def has_only_one_child(self):
+        """
+        Returns True if this node has exactly one child, and False otherwise
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n1.has_only_one_child()
+            False
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n1.has_only_one_child()
+            True
+            sage: n3 = _TedderTreeNode()
+            sage: n1.add_child(n3)
+            sage: n1.has_only_one_child()
+            False
+        """
         return self.num_children == 1
     
     def replace_with(self, replacement):
-        # Replaces the subtree rooted at this node with another subtree
-        # rooted at the supplied node (replacement)
-        # INPUT:
-        # - 'replacement' -- _TedderTreeNode
+        """
+        Replaces the subtree rooted at this node with another subtree rooted at 
+        the supplied node (``replacement``), after removing it from where it is 
+        currently
+
+        INPUT:
+        
+        - ``replacement`` -- _TedderTreeNode
+
+        EXAMPLES:
+        
+        Using _TedderMDLeafNode to distinguish between nodes::
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode, _TedderMDLeafNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderMDLeafNode(1)
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderMDLeafNode(2)
+            sage: n1.add_child(n3)
+            sage: print(n1)
+            {2, 1}
+            sage: n4 = _TedderMDLeafNode(3)
+            sage: n2.replace_with(n4)
+            sage: print(n1)
+            {2, 3}
+        """
+        # Remove ``replacement`` from where it is currently
         replacement.remove()
+
+        # Change the sibling/parent pointers appropriately
         replacement.left_sibling = self.left_sibling
         replacement.right_sibling = self.right_sibling
         if self.left_sibling is not None:
@@ -682,81 +798,248 @@ class _TedderTreeNode():
             self.right_sibling.left_sibling = replacement
         replacement.parent = self.parent
         if self.parent is not None and self.parent.first_child == self:
+            # This node is the first child, so ``replacement`` becomes the first 
+            # child
             self.parent.first_child = replacement
+
+        # Reset this node's sibling/parent pointers to None, as it is no longer 
+        # connected to them.
         self.parent = None
         self.left_sibling = None
         self.right_sibling = None
     
     def remove(self):
-        # Removes the subtree rooted at this node
+        """
+        Removes the subtree rooted at this node
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderTreeNode()
+            sage: n1.add_child(n3)
+            sage: n4 = _TedderTreeNode()
+            sage: n3.add_child(n4)
+            sage: n5 = _TedderTreeNode()
+            sage: n1.add_child(n5)
+            sage: print(n1)
+            {{}, {{}}, {}}
+            sage: n3.remove()
+            sage: print(n1)
+            {{}, {}}
+            sage: print(n3)
+            {{}}
+        """
         if self.parent is not None:
+            # The parent has one less child
             self.parent.num_children -= 1
+
+        # Fix the pointers of the siblings/parent of this node
         if self.left_sibling is not None:
             self.left_sibling.right_sibling = self.right_sibling
         if self.right_sibling is not None:
             self.right_sibling.left_sibling = self.left_sibling
         if self.parent is not None and self.parent.first_child == self:
             self.parent.first_child = self.right_sibling
+
+        # Reset this node's sibling/parent pointers to None, as it is no longer 
+        # connected to them
         self.parent = None
         self.left_sibling = None
         self.right_sibling = None
 
     def insert_before(self, just_before):
-        # insert the subtree rooted at this node as the left sibling of 
-        # the supplied node (just_before)
-        # INPUT:
-        # - 'just_before' -- _TedderTreeNode
+        """
+        Insert the subtree rooted at this node as the left sibling of the 
+        supplied node (``just_before``), after removing it from where it is 
+        currently
+        
+        INPUT:
+        
+        - ``just_before`` -- _TedderTreeNode
+
+        EXAMPLES:
+
+        Using _TedderMDLeafNodes to distinguish between nodes::
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode, _TedderMDLeafNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderMDLeafNode(1)
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderMDLeafNode(2)
+            sage: n1.add_child(n3)
+            sage: print(n1)
+            {2, 1}
+            sage: n4 = _TedderMDLeafNode(3)
+            sage: n4.insert_before(n2)
+            sage: print(n1)
+            {2, 3, 1}
+        """
+        # Remove this node from where it is
         self.remove()
+
+        # Fix the sibling pointers
         self.left_sibling = just_before.left_sibling
         if just_before.left_sibling is not None:
             just_before.left_sibling.right_sibling = self
         self.right_sibling = just_before
         just_before.left_sibling = self
+
+        # Fix the parent pointers
         self.parent = just_before.parent
         if just_before.parent is not None:
+            # The parent now has one more child, and this node is now the 
+            # leftmost child if ``just_before`` was the leftmost child.
             just_before.parent.num_children += 1
             if just_before.parent.first_child == just_before:
                 self.parent.first_child = self
 
     def insert_after(self, just_after):
-        # insert the subtree rooted at this node as the right sibling of
-        # the supplied node (just_after)
-        # INPUT:
-        # - 'just_after' -- _TedderTreeNode
+        """
+        Insert the subtree rooted at this node as the right sibling of 
+        the supplied node (``just_after``)
+        
+        INPUT:
+        
+        - ``just_after`` -- _TedderTreeNode
+
+        EXAMPLES:
+
+        Using _TedderMDLeafNodes to distinguish between nodes::
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode, _TedderMDLeafNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderMDLeafNode(1)
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderMDLeafNode(2)
+            sage: n1.add_child(n3)
+            sage: n4 = _TedderMDLeafNode(3)
+            sage: n4.insert_after(n3)
+            sage: print(n1)
+            {2, 3, 1}
+        """
+        # Remove this node from where it is
         self.remove()
+
+        # Fix the sibling pointers
         self.right_sibling = just_after.right_sibling
         if just_after.right_sibling is not None:
             just_after.right_sibling.left_sibling = self
         self.left_sibling = just_after
         just_after.right_sibling = self
+
+        # Fix the parent pointers
         self.parent = just_after.parent
         if just_after.parent is not None:
+            # The parent now has one more child
             just_after.parent.num_children += 1
     
     def make_first_child(self):
-        # Moves this node to be the first child of it's parent
+        """
+        Moves the subrree rooted at this node to be the first child of it's 
+        parent
+
+        EXAMPLES:
+
+        Using _TedderMDLeafNodes to distinguish between nodes::
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode, _TedderMDLeafNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderMDLeafNode(1)
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderMDLeafNode(2)
+            sage: n1.add_child(n3)
+            sage: print(n1)
+            {2, 1}
+            sage: n2.make_first_child()
+            sage: print(n1)
+            {1, 2}
+        """
         if self.parent is not None and self.parent.first_child != self:
             new_right_sibling = self.parent.first_child
+            # Remove this node from where it is
             self.remove()
+
+            # Insert it to the left of the current first child, to make 
+            # it the new first child.
             self.insert_before(new_right_sibling)
     
     def get_leaves(self):
-        # returns a list of the leaves of the subtree rooted at this node
+        """
+        Returns a list of the leaves of the subtree rooted at this node. The 
+        leaves in this case refers to the _TedderMDLeafNode's present in the 
+        tree.
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode, _TedderMDLeafNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderMDLeafNode(1)
+            sage: n2.add_child(n3)
+            sage: n4 = _TedderMDLeafNode(2)
+            sage: n1.add_child(n4)
+            sage: n5 = _TedderMDLeafNode(3)
+            sage: n1.add_child(n5)
+            sage: print(n1)
+            {3, 2, {1}}
+            sage: n1.get_leaves()
+            [3, 2, 1]
+        """
         if isinstance(self, _TedderMDLeafNode):
+            """
+            If this is a _TedderMDLeafNode, the list of leaves is just the 
+            singleton list of this node, as _TedderMDLeafNodes shouldn't have 
+            any children
+            """
             leaves = [self]
         else:
+            """
+            This node isn't a _TedderMDLeafNode, so the list of leaves is 
+            just the union of the list of leaves of this node's children's 
+            subtree.
+            """
             leaves = []
             current_child = self.first_child
             while current_child is not None:
                 leaves += current_child.get_leaves()
                 current_child = current_child.right_sibling
+
         return leaves
     
     def add_children_from(self, parent):
-        # Adds the children of the supplied node (parent) as children to
-        # this node
-        # INPUT:
-        # - 'parent' -- _TedderTreeNode
+        """
+        Adds the children of the supplied node (``parent``) as children to this 
+        node
+        
+        INPUT:
+        
+        - ``parent`` -- _TedderTreeNode
+
+        EXAMPLES:
+        
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderTreeNode()
+            sage: n1.add_child(n3)
+            sage: print(n1)
+            {{}, {}}
+            sage: n4 = _TedderTreeNode()
+            sage: n5 = _TedderTreeNode()
+            sage: n4.add_child(n5)
+            sage: print(n4)
+            {{}}
+            sage: n4.add_children_from(n1)
+            sage: print(n1)
+            {}
+            sage: print(n4)
+            {{}, {}, {}}
+        """
         current_child = parent.first_child
         while current_child is not None:
             next_child = current_child.right_sibling
@@ -764,8 +1047,28 @@ class _TedderTreeNode():
             current_child = next_child
     
     def replace_this_by_its_children(self):
-        # Removes just this node of the tree, the children of this node
-        # become children of this node's parent
+        """
+        Removes just this node of the tree, the children of this node become 
+        children of this node's parent
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderTreeNode()
+            sage: n2.add_child(n3)
+            sage: n4 = _TedderTreeNode()
+            sage: n2.add_child(n4)
+            sage: n5 = _TedderTreeNode()
+            sage: n1.add_child(n5)
+            sage: print(n1)
+            {{}, {{}, {}}}
+            sage: n2.replace_this_by_its_children()
+            sage: print(n1)
+            {{}, {}, {}}
+        """
         current_child = self.first_child
         while current_child is not None:
             next_child = current_child.right_sibling
@@ -774,24 +1077,88 @@ class _TedderTreeNode():
         self.remove()
     
     def replace_children_with(self, replacement):
-        # Replaces the children of this node with the node supplied (replacement)
-        # INPUT:
-        # - 'replacement' -- _TedderTreeNode
+        """
+        Replaces the children of this node with the node supplied 
+        (``replacement``)
+        
+        INPUT:
+        
+        - ``replacement`` -- _TedderTreeNode
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderTreeNode()
+            sage: n1.add_child(n3)
+            sage: print(n1)
+            {{}, {}}
+            sage: n4 = _TedderTreeNode()
+            sage: n5 = _TedderTreeNode()
+            sage: n4.add_child(n5)
+            sage: print(n4)
+            {{}}
+            sage: n1.replace_children_with(n4)
+            sage: print(n1)
+            {{{}}}
+        """
         current_child = self.first_child
         while current_child is not None:
             next_child = current_child.right_sibling
+            # Remove each of this node's children from where they are
             current_child.remove()
             current_child = next_child
+
+        # Add the new node as the only child of this node.
         self.add_child(replacement)
     
     def is_root(self):
-        # Returns True if this node is the root
-        # For the general node, this means if it has no parent, but will be overridden
-        # for subclasses
+        """
+        Returns True if this node is the root
+        For the general node, this means if it has no parent, but will be 
+        overridden for subclasses
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n1.is_root()
+            True
+            sage: n2.is_root()
+            False
+        """
         return self.parent is None
 
     def __repr__(self):
-        result = "(num_children=" + str(self.num_children) + " "
+        """
+        Returns the string representation of this node.
+        _TedderTreeNodes don't have any sort of 'value', so the string 
+        representation is just a list of the representations of this 
+        node's children, separated by commas, and surrounded by {}, to 
+        distinguish it from its subclasses.
+        This will be overridden by all of the subclasses, for more useful 
+        representaitons.
+
+        EXAMPLES:
+
+            sage: from sage.graphs.graph_decompositions.modular_decomposition import _TedderTreeNode
+            sage: n1 = _TedderTreeNode()
+            sage: print(n1)
+            {}
+            sage: n2 = _TedderTreeNode()
+            sage: n1.add_child(n2)
+            sage: n3 = _TedderTreeNode()
+            sage: n2.add_child(n3)
+            sage: n4 = _TedderTreeNode()
+            sage: n1.add_child(n4)
+            sage: print(n1)
+            {{}, {{}}}
+        """
+        result = "{"
         current_child = self.first_child
         if current_child is not None:
             result += str(current_child)
@@ -799,34 +1166,86 @@ class _TedderTreeNode():
         while current_child is not None:
             result += ", " + str(current_child)
             current_child = current_child.right_sibling
-        return result + ")"
+        return result + "}"
 
 class _TedderMDNode(_TedderTreeNode):
+    """
+    The class of nodes in the MD tree for the Tedder algorithm.
+    This class performs a similar function as the Node class for MD trees, and
+    can be converted to the Node class using the function to_node.
+    This class, however, inherits from _TedderTreeNode for the operations on 
+    trees needed for the Tedder algorithm.
+    These nodes, along with the Node Type and Split Type, store a comp_number 
+    and tree_number, which are used in the Tedder algorithm
+    The nodes also have a num_marks attribute, which is used to distinguish 
+    between certain types of nodes at various points in the Tedder algorithm.
+    The class _TedderMDLeafNode will inherit from this class, and represent 
+    the leaf nodes of the MD trees.
+    """
 
     def __init__(self, node_type = NodeType.PRIME):
-        # INPUT:
-        # - 'node_type' -- NodeType
+        """
+        INPUT:
+        
+        - ``node_type`` -- NodeType, default PRIME
+        """
+        # Initialise the node using the superclass _TedderTreeNode __init__ 
+        # method
         _TedderTreeNode.__init__(self)
         self.type = node_type
+        """
+        - ``type`` -- NodeType, the type of the node, PRIME, PARALLEL, SERIAL, 
+        or NORMAL, but should only be NORMAL if the node is a _TedderMDLeafNode
+        """
         self.comp_number = -1
+        # - ``comp_number`` -- Integer, this node's component or co-component 
+        # number
         self.tree_number = -1
+        # - ``tree_number`` -- Integer, the number of the tree this node is in, 
+        # relative to the current subproblem being solved
         self.num_marks = 0
+        # - ``num_marks`` -- Integer, the number of marks this node has
         self.split_type = NodeSplit.NO_SPLIT
+        # - ``split_type`` -- NodeSplit, the type of split this node has, 
+        # NO_SPLIT, LEFT_SPLIT, RIGHT_SPLIT or BOTH_SPLIT
     
     def copy(self, copy):
-        # Receives the value of the supplied node's (copy) field, but
-        # none of it's children
-        # INPUT:
-        # - 'copy' -- _TedderMDNode
+        """
+        Receives the value of the supplied node's (``copy``) fields, but
+        none of it's children
+
+        INPUT:
+        
+        - ``copy`` -- _TedderMDNode, the node whose fields are being copied
+        """
         self.type = copy.type
         self.comp_number = copy.comp_number
         self.tree_number = copy.tree_number
         self.num_marks = copy.num_marks
         self.split_type = copy.split_type
 
+    def to_node(self):
+        """
+        Convert this node's subtree into Node class elements
+
+        OUTPUT:
+
+        the equivalent Node element for this node's subtree.
+        """
+        if isinstance(self, _TedderMDLeafNode):
+            node = create_normal_node(self.vertex)
+        else:
+            # It's not a leaf node, so it has children
+            node = Node(self.type)
+            current_child = self.first_child
+            while current_child is not None:
+                node.children.append(current_child.to_node())
+                current_child = current_child.right_sibling
+        return node
+
     def is_fully_marked(self):
-        # Returns True if the number of marks this node has is equal to
-        # the number of it's children
+        # Returns True if the number of marks this node has is equal to the 
+        # number of it's children, and False otherwise
         return self.num_marks == self.num_children
     
     def clear_marks(self):
@@ -834,14 +1253,18 @@ class _TedderMDNode(_TedderTreeNode):
         self.num_marks = 0
     
     def is_marked(self):
-        # returns True if this node has at least one mark
+        # returns True if this node has at least one mark, and False otherwise
         return self.num_marks > 0
 
     def set_comp_number_for_subtree(self, comp_number):
-        # Sets the comp_number of all nodes in this node's subtree to the
-        # supplied value (comp_number)
-        # INPUT:
-        # - 'comp_number' -- integer
+        """
+        Sets the comp_number of all nodes in this node's subtree to the 
+        supplied value (``comp_number``)
+
+        INPUT:
+        
+        - ``comp_number`` -- integer
+        """
         self.comp_number = comp_number
         current_child = self.first_child
         while current_child is not None:
@@ -849,10 +1272,14 @@ class _TedderMDNode(_TedderTreeNode):
             current_child = current_child.right_sibling
         
     def set_tree_number_for_subtree(self, tree_number):
-        # Sets the tree_number of all nodes in this node's subtree to the
-        # supplied value (tree_number)
-        # INPUT:
-        # - 'tree_number' -- integer
+        """
+        Sets the tree_number of all nodes in this node's subtree to the 
+        supplied value (``tree_number``)
+        
+        INPUT:
+        
+        - ``tree_number`` -- integer
+        """
         self.tree_number = tree_number
         current_child = self.first_child
         while current_child is not None:
@@ -865,73 +1292,119 @@ class _TedderMDNode(_TedderTreeNode):
         the nodes in this subtree rooted at this node according to either the
         component or the co-component they reside in, storing the number in the 
         node's 'comp_number' field. 
-        If the supplied type (by_type) is parallel, and this node is labelled parallel,
-        then the subtrees defined by its children are numbered incrementally starting
-        with the supplied number, with all nodes in each subtree having their 'comp_number'
-        set to the number assigned to that tree. If this node is not labelled parallel,
-        then all nodes in this node's subtree have their 'comp_number' set to the supplied
-        number.
+        If the supplied type (by_type) is parallel, and this node is labelled 
+        parallel,then the subtrees defined by its children are numbered 
+        incrementally starting with the supplied number, with all nodes in each 
+        subtree having their ``comp_number`` set to the number assigned to that 
+        tree. If this node is not labelled parallel, then all nodes in this 
+        node's subtree have their ``comp_number`` set to the supplied number.
         Symmetrically for when the supplied type is series
 
         INPUT:
-        - 'comp_number' -- integer
-        - 'by_type' -- NodeType
+
+        - ``comp_number`` -- integer
+        
+        - ``by_type`` -- NodeType
 
         OUTPUT:
+
         The number of components counted
         """
-
+        # Store the original comp_number, to find the number of components 
+        # counted
         orig_comp_number = comp_number
         if self.type == by_type:
+            # Number the subtrees' comp_number incrementally starting with 
+            # ``comp_number``
             current_child = self.first_child
             while current_child is not None:
                 current_child.set_comp_number_for_subtree(comp_number)
                 current_child = current_child.right_sibling
                 comp_number += 1
         else:
+            # Set the comp_number for all nodes in the subtree rooted at this 
+            # node to ``comp_number``
             self.set_comp_number_for_subtree(comp_number)
+        # Return the number of components counted
         return comp_number - orig_comp_number
 
     def mark_ancestors_by_split(self, split_type):
-        # Adds the given mark to all of this node's ancestors
-        # Precondition: if an ancestor, say 'n', of this node is marked by 'x', then all
-        # of n's ancestors are also marked by 'x'
-        # Similarly for the children of all prime ancestors
-        # INPUT:
-        # - split_type -- NodeSplit
+        """
+        Adds the given mark to all of this node's ancestors
+        Similarly for the children of all prime ancestors
+
+        INPUT:
+        
+        - ``split_type`` -- NodeSplit
+
+        PRECONDITION:
+        
+        If an ancestor, say 'n', of this node is marked by 'x', 
+        then all of n's ancestors are also marked by 'x'
+        """
         if not self.is_root():
+            # As this node is not a root, it has a parent, which is a 
+            # _TedderMDNode
+            assert(self.parent is not None)
             parent = self.parent
             parent.add_split_mark(split_type)
             parent.mark_ancestors_by_split(split_type)
 
     def mark_children_by_split(self, split_type):
-        # Adds the given mark to all of this node's children
-        # INPUT:
-        # - split_type -- NodeSplit
+        """
+        Adds the given mark to all of this node's children
+        
+        INPUT:
+        
+        - ``split_type`` -- NodeSplit
+        """
         current_child = self.first_child
         while current_child is not None:
             current_child.add_split_mark(split_type)
             current_child = current_child.right_sibling
 
     def add_split_mark(self, split_type):
-        # Adds the given mark (split_type) to this node. If this node has already been marked 
-        # by this type, then nothing happens. If the node already has a different mark it is 
-        # marked as'mixed'. If the node is prime, then the node's children are also marked by 
-        # the supplied type
-        # INPUT:
-        # - split_type -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+        """
+        Adds the given mark (``split_type``) to this node. If this node has 
+        already been marked by this type, then nothing happens. If the node 
+        already has a different mark it is marked as BOTH_SPLIT. If the node is 
+        prime, then the node's children are also marked by the supplied type.
+        
+        INPUT:
+        
+        - ``split_type`` -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+        """
         if self.split_type != split_type:
+            """
+            If self.split_type is NO_SPLIT, this node hasn't been marked, so it 
+            can be marked with ``split_type`` as normal. If it is BOTH_SPLIT, 
+            or the other split type (i.e. LEFT_SPLIT if ``split_type`` is 
+            RIGHT_SPLIT), then it either has already been marked by both split 
+            types, or is now marked by both split types, so should be marked as 
+            BOTH_SPLIT
+            """
             if self.split_type == NodeSplit.NO_SPLIT:
                 self.split_type = split_type
             else:
                 self.split_type = NodeSplit.BOTH_SPLIT
+        # If self.split_type is equal to ``split_type``, no extra mark needs to 
+        # be added
         if self.type == NodeType.PRIME:
+            # If this node has a PRIME type, all this node's children also need 
+            # to be marked with ``split_type``
             self.mark_children_by_split(split_type)
     
     def is_split_marked(self, split_type):
-        # Returns True if this node has been marked by the supplied type (split_type) of split
-        # INPUT:
-        # - 'split_type' -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+        """
+        Returns True if this node has been marked by the supplied type 
+        (``split_type``) of split, and False otherwise.
+        This is the case if either self.split_type is equal to ``split_type``, 
+        or is BOTH_SPLIT, as it has then been marked by both types of split.
+        
+        INPUT:
+        
+        - ``split_type`` -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+        """
         return self.split_type == NodeSplit.BOTH_SPLIT or self.split_type == split_type
 
     def clear_split_marks_for_subtree(self):
@@ -944,14 +1417,23 @@ class _TedderMDNode(_TedderTreeNode):
 
     def promote(self, split_type):
         """
-        Promotes to depth-0 all nodes in this node's subtree labelled by the supplied type (split_type).
-        If the split type is LEFT_SPLIT, then nodes are promoted to the left of their parent.
-        If the split type is RIGHT_SPLIT, then nodes are promoted to the right of their parent.
-        If, after promoting these nodes, some are found to have no children, or only a single child,
-        then these nodes are deleted, and in the latter case, replaced by their only child.
-        Precondition: if node x is marked by split_type t, then all of x's ancestors are also marked by t
+        Promotes to depth-0 (this node's level) all nodes in this node's subtree 
+        labelled by the supplied type (split_type). 
+        If the split type is LEFT_SPLIT, then nodes are promoted to the left of 
+        their parent. If the split type is RIGHT_SPLIT, then nodes are promoted 
+        to the right of their parent.
+        If, after promoting these nodes, some are found to have no children, or 
+        only a single child, then these nodes are deleted, and in the latter 
+        case, replaced by their only child.
+        ancestors are also marked by t
+
         INPUT:
-        - split_type -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+        
+        - ``split_type`` -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+        
+        PRECONDITION:
+        
+        If node x is marked by split_type t, then all of x's 
         """
         to_promote = self.first_child
         # Promote each child marked by the given type
@@ -959,20 +1441,27 @@ class _TedderMDNode(_TedderTreeNode):
             next_to_promote = to_promote.right_sibling
             if to_promote.split_type == split_type:
                 if split_type == NodeSplit.LEFT_SPLIT:
+                    # Promote the node to just to the left of it's parent
                     to_promote.insert_before(to_promote.parent)
                 else:
+                    # Promote the node to just to the right of it's parent
                     to_promote.insert_after(to_promote.parent)
-                # Recursively promote in the subtree rooted at the node just promoted
+                # Recursively promote in the subtree rooted at the node just 
+                # promoted
                 to_promote.promote(split_type)
             to_promote = next_to_promote
         if self.has_no_children() and not isinstance(self, _TedderMDLeafNode):
+            # This node has no children, and isn't a leaf, so is a useless node 
+            # that can be deleted.
             self.remove()
         elif self.has_only_one_child():
+            # This node has only one child, so can safely be replaced by that 
+            # child
             self.replace_with(self.first_child)
 
     def get_alpha(self):
-        # Returns a list representing the union of the alpha-lists of all of the leaves in the subtree
-        # rooted at this node.
+        # Returns a list representing the union of the alpha-lists of all of 
+        # the leaves in the subtree rooted at this node.
         alpha = [] # list of _TedderMDLeafNode
         leaf_list = self.get_leaves() # list of leaves = list of _TedderMDLeafNode
         for leaf in leaf_list:
@@ -980,101 +1469,196 @@ class _TedderMDNode(_TedderTreeNode):
         return alpha
 
     def remove_degenerate_duplicates_from_subtree(self):
-        # Removes consecutive degenerate nodes of the same type from this node's subtree
+        # Removes consecutive degenerate nodes of the same type from this node's 
+        # subtree Degenerate nodes are those with node type PARALLEL or SERIAL
         current_child = self.first_child
         while current_child is not None:
             next_child = current_child.right_sibling
+            # Recursively remove the degenerate duplicates from the subtree
             current_child.remove_degenerate_duplicates_from_subtree()
             if current_child.type == self.type and self.type.is_degenerate():
+                # Remove this node, as it can be subsumed by its parent
                 self.add_children_from(current_child)
                 current_child.remove()
             current_child = next_child
     
     def clear_all(self):
-        # Resets to their defaults all properties of this node's subtree, except it's type, which
-        # remains the same
+        # Resets to their defaults all properties of this node's subtree, except 
+        # it's type, which remains the same
         self.comp_number = -1
         self.tree_number = -1
         self.num_marks = 0
         self.split_type = NodeSplit.NO_SPLIT
         current_child = self.first_child
         while current_child is not None:
+            # Recursively clears the property of the nodes in the children's 
+            # subtrees
             current_child.clear_all()
             current_child = current_child.right_sibling
     
     def clear_visited(self):
-        # Resets to False the 'visited' fields of all nodes in this node's subtree
-        # Only the leaves (_TedderMDLeafNode) of the tree will have a 'visited' field
+        """
+        Resets to False the 'visited' fields of all nodes in this node's subtree.
+        Only the leaves (_TedderMDLeafNode) of the tree will have a 'visited' 
+        field
+        """
         leaf_list = self.get_leaves()
         for leaf in leaf_list:
             leaf.clear_visited()
         
     def is_root(self):
-        # Overridden method from _TedderTreeNode
-        # Returns True if this node is a root of an MD tree
-        # For these nodes, this is True if the parent of this node is NOT an _TedderMDNode
+        """
+        Overridden method from _TedderTreeNode
+        Returns True if this node is a root of an MD tree
+        For these nodes, this is True if the parent of this node is NOT a 
+        _TedderMDNode
+        """
         if self.parent is None or type(self.parent) is not _TedderMDNode:
             return True
         else:
             return False
 
     def __repr__(self):
-        result = "(" + str(self.type) + ", num_children=" + str(self.num_children)
+        """
+        Overridden method from _TedderTreeNode
+        Returns the string represetation of this node.
+        The 'value' of this node is the node type of the node, so the 
+        representation is the type of the node, followed by a list of the 
+        representations of this node's children, separated by commas, surrounded 
+        by () in order to distinguish it from the other classes inheriting from 
+        _TedderTreeNode.
+        This method will be overridden by _TedderMDLeafNode, as they have no 
+        children and a different definition of `value` of the node.
+        """
+        result = "(" + str(self.type) + ": "
         current = self.first_child
+        if current is not None:
+            result += str(current)
+            current = current.right_sibling
         while current is not None:
             result += ", " + str(current)
             current = current.right_sibling
         return result + ")"
 
 class _TedderMDLeafNode(_TedderMDNode):
-    
+    """
+    This is the class of leaf nodes in the MD trees used in the Tedder algorithm.
+    These node's have no children, and each is related to a vertex in the graph 
+    that the Tedder algorithm is computed the MD tree of.
+    The node also stores the _TedderMDLeafNode related to the neighbours of this
+    node's vertex in its graph, as well as a list of _TedderMDLeafNodes called 
+    its alpha-list that is used throughout the Tedder algorithm.
+    Finally these nodes store a visited field, which is set to True once this 
+    node is used as pivot, and stays True throughout the algorithm
+    """
     def __init__(self, vertex = None):
-        # INPUT:
-        # - 'vertex' -- the graph vertex that this node represents
+        """
+        INPUT:
+        
+        - ``vertex`` -- the graph vertex that this node represents
+        """
+        # Initialise the node using the superclass _TedderMDNode __init__ method
         _TedderMDNode.__init__(self)
-        self.alpha = [] # List of _TedderMDLeafNodes
-        self.neighbors = [] # List of _TedderMDLeafNodes
+        self.alpha = []
+        # - ``alpha`` -- List of _TedderMDLeafNodes, the alpha-list of this 
+        # vertex
+        self.neighbors = [] 
+        # - ``neighbors`` -- List of _TedderMDLeafNodes, the neighours of this 
+        # vertex in the graph
         self.visited = False
+        # - ``visited`` -- Boolean, True if this node has been the pivot in the 
+        # algorithm, and False otherwise
         self.vertex = vertex
+        # - ``vertex`` -- vertex, the vertex this node is related to in the 
+        # graph
 
     def clear_alpha(self):
         # Resets alpha to []
         self.alpha = []
 
     def replace_alpha(self, new_alpha):
-        # Replaces this node's alpha list with the supplied list (new_alpha)
-        # INPUT:
-        # - 'new_alpha' -- list of _TedderMDLeafNodes
+        """
+        Replaces this node's alpha list with the supplied list (``new_alpha``)
+        
+        INPUT:
+        
+        - ``new_alpha`` -- list of _TedderMDLeafNodes
+        """
         self.alpha = new_alpha
 
     def clear_all(self):
-        # Overridden method from 
-        # Resets to their defaults all properties of this node, except it's 'visited' field,
-        # which remains the same.
+        """
+        Overridden method from _TedderMDNode
+        Resets to their defaults all properties of this node, except it's 
+        'visited' field, which remains the same. The only property other than 
+        the ones inherited from _TedderMDNode that needs to be reset is the 
+        alpha-list of this ndoe
+        """
         _TedderMDNode.clear_all(self)
         self.alpha = []
     
     def __repr__(self):
-        result =  "*" + str(self.vertex) + " alpha="
-        if self.alpha != []:
-            result += str(self.alpha[0].vertex)
-        for node in self.alpha[1:]:
-            result += ", " + str(node.vertex)
-        return result + "*"
+        """
+        Overridden method from _TedderMDNode
+        Returns the string representation of this node.
+        The 'value' of this node is the representation of the vertex it is 
+        related to.
+        This node will have no children, so that is all that is needed for the
+        representation of the node.
+        """
+        return str(self.vertex)
 
 class _TedderFactPermElement(_TedderTreeNode):
+    """
+    This is the class of factorising permutation elements used in the Tedder 
+    Algorithm.
+    The Tedder algorithm uses these to form factorising permutations where the 
+    strong modules in the graph are stored consecutively.
+    A factorising permutation will either have an index of -1, in which case it 
+    is a trivial element that is used as a separator, or it will have an index 
+    >= 0, in which case it is associated with an MD tree, the root of which will 
+    be its first (and only) child.
+    A factorising permutation element also has a mu-value. For details on what 
+    the mu-value of a factorising permutation element is, see [TCHP2008]_
+    A factorising permutation also can have one or more marks, which are used to 
+    distinguish between certain elements in the algorithm, and flags for whether 
+    or not they have certain connections to the left and right elements.
+    Finally, an element stores the neighbours it has.
+    If a vertex in this elements MD tree has an edge to a vertex in the MD tree 
+    of another element, we say this element has an edge to that element.
+    This element is a neighbour of another element if this element has an edge 
+    to that element, and that element is on the other side of the pivot to this 
+    element.
+    """
     
     def __init__(self, index = -1):
-        # INPUT:
-        # - 'index' -- integer
+        """
+        INPUT:
+        
+        - ``index`` -- integer
+        """
+        # Initialise the element using the superclass _TedderTreeNode __init__
         _TedderTreeNode.__init__(self)
         self.index = index
+        # - ``index`` -- Integer, the index of the element (see above).
         self.mu = None
+        # - ``mu`` -- Integer, the mu value of the element (see [TCHP2008]_).
         self.has_right_comp_fragment = False
+        # - ``has_right_comp_fragment`` -- Boolean. True if this element is part 
+        # of the same component as the element to its right, and False otherwise.
         self.has_left_co_comp_fragment = False
+        """
+        - ``has_left_co_comp_fragment`` -- Boolean, True if this element is part 
+        of the same co-component as the element to its left, and False otherwise.
+        """
         self.has_right_layer_neighbor = False
+        # - ``has_right_layer_neighbor`` -- Boolean, True if this element has an 
+        # edge to the element to its right, and False otherwise.
         self.num_marks = 0
+        # - ``num_marks`` -- Integer, the number of marks this element has.
         self.neighbors = []
+        # - ``neighbors`` -- List of _TedderFactPermElements, the neighbours of 
+        # this element (see above)
 
     def is_marked(self):
         # Returns True if the element has been marked
@@ -1085,37 +1669,124 @@ class _TedderFactPermElement(_TedderTreeNode):
         self.num_marks = 0
 
     def replace_neighbors(self, new_neighbors):
-        # Replaces this element's neighbors with the supplied list (new_neighbors)
-        # INPUT:
-        # - new_neighbors -- List of FactPermElements
+        """
+        Replaces this element's neighbors with the supplied list 
+        (``new_neighbors``)
+        
+        INPUT:
+        
+        - ``new_neighbors`` -- List of _TedderFactPermElements
+        """
         self.neighbors = new_neighbors
 
     def __repr__(self):
+        """
+        Overridden from _TedderTreeNode
+        Returns the string representation of this element. 
+        The 'value' of this element is simply its index
+        To make things clearer, if this element is trivial (its index is -1), we 
+        don't show it, simply leaving it blank. 
+        As the non-trivial elements of the factorising permutation will only have 
+        one child, the root of its MD tree, and the MD tree doesn't really matter 
+        to the operations surrounding factorising permutation elements, these are 
+        not shown in the representation. To make things clear, the representation 
+        of the element is preceded by |. This means if the element is trivial, 
+        its representation will simply be |, if it isn't, its representation
+        will be |Index=i, where i is the index of the node.
+        """
         result = "|"
         if self.index != -1:
-            result += "{Index=" + str(self.index) + " neighbors="
-            if self.neighbors != []:
-                result += str(self.neighbors[0].index)
-            for neighbor in self.neighbors[1:]:
-                result += ", " + str(neighbor.index)
+            result += "Index=" + str(self.index)
         return result
 
 class _TedderSubProblem(_TedderTreeNode):
+    """
+    This is the class of recursive subproblems used in the Tedder Algorithm.
+    The children of these nodes will have a different class depending on the
+    point in the algorithm. They could, at times, be _TedderMDNodes (or 
+    _TedderMDLeafNodes), _TedderFactPermElements, or _TedderSubProblems.
+    Comments have been added to ensure that it is clear what class the children
+    are at any time.
+    These nodes also store the pivot of the subproblem, which is an element 
+    chosen arbitrarily from the subproblems graph. An element should only ever be 
+    the pivot of a subproblem once.
+    It also stores whether or not this subproblem is a currently active 
+    subproblem, or a subproblem waiting to be solved, and whether or not the 
+    vertices in this subproblem are connected to the pivot of its parent.
+    A subproblem represents a graph, and 'solving' the subproblem returns the MD
+    tree of the graph represented by the subproblem.
+    The build_graph function converts this subproblem into the 'unsolved' 
+    subproblem representing the graph, and the solve function then solves this 
+    subproblem, returning a _TedderMDNode that is the root of the MD tree of the 
+    graph.
+    """
 
     def __init__(self, leaf = None):
-        # INPUT:
-        # - 'leaf' -- _TedderMDLeafNode
+        """
+        INPUT:
+        
+        - ``leaf`` -- _TedderMDLeafNode, if this is not None, initialise the node 
+        to start with this as a child.
+        """
+        # Initialise the element using the superclass _TedderTreeNode __init__
         _TedderTreeNode.__init__(self)
         self.connected = False
+        """
+        - ``connected`` -- Boolean, True if this nodes vertices are connected to 
+        the pivot of this node's parent, and False otherwse.
+        """
         self.active = False
+        # - ``active`` -- Boolean, True if this node is currently being solved,
+        # and False otherwse
         self.pivot = None
+        # - ``pivot`` -- _TedderMDLeafNode, the pivot vertex of this problem
         if leaf is not None:
+            # Subproblem initialised with one child, ``leaf``
             self.add_child(leaf)
 
+    def build_graph(self, graph):
+        """
+        Builds the subproblem from the given graph (graph), and adds the vertices 
+        as children to this node
+        
+        INPUT:
+        
+        - ``graph`` -- the graph from which the subproblem will be build
+
+        PRECONDITION:
+        
+        ``graph`` is undirected, and has at least one node.
+        """
+        # Create the _TedderLeafNode for each vertex
+        vertex_list = graph.vertices()
+        vertex_dictionary = {}
+        """
+        A dictionary 'vertex --> node', where 
+        - 'vertex' is a vertex of the graph ``graph``, and
+        - 'node' is the _TedderMDLeafNode associated with 'vertex'
+        """
+        for vertex in vertex_list:
+            vertex_dictionary[vertex] = _TedderMDLeafNode(vertex)
+    
+        # Populate the nodes with the neighbors of their vertices, and add them 
+        # to the subproblem
+        for vertex in vertex_list:
+            node = vertex_dictionary[vertex]
+            neighbor_list = graph.neighbors(vertex)
+            for neighbor in neighbor_list:
+                node.neighbors.append(vertex_dictionary[neighbor])
+            # Add vertex as a child
+            self.add_child(node)
+
     def copy(self, copy):
-        # Copies the field values of the supplied problem (copy), but not any of it's children
-        # INPUT:
-        # - 'copy' -- _TedderSubProblem
+        """
+        Copies the field values of the supplied problem (copy), but not any of 
+        it's children
+        
+        INPUT:
+        
+        - ``copy`` -- _TedderSubProblem
+        """
         self.connected = copy.connected
         self.active = copy.active
         self.pivot = copy.pivot
@@ -1128,30 +1799,42 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def pivot_problem(self):
         """
-        Selects a pivot vertex from this recursive subproblem and partitions the recursion tree according to its neighbors.
-        Has the side effect that this recursive subproblem will no longer be the current recursive subproblem, which is 
-        necessary to achieve linear time; returns the new current recursive subproblem
+        Selects a pivot vertex from this recursive subproblem and partitions the 
+        recursion tree according to its neighbors.
+        Has the side effect that this recursive subproblem will no longer be the 
+        current recursive subproblem, which is 
+        necessary to achieve linear time; returns the new current recursive 
+        subproblem
+        
         OUTPUT:
-        - The new current recursive subproblem
+        
+        The new current recursive subproblem
         """
-        pivot = self.first_child
+        pivot = self.first_child # This should be a _TedderMDLeafNode
+        assert(pivot is not None and isinstance(pivot, _TedderMDLeafNode))
         pivot.visited = True
+        # Process the neighbours of the pivot, getting back the subproblem
+        # containing the neighbours of the pivot.
         neighbor_problem = self.process_neighbors(pivot)
-        pivot.remove()
+        # Create the subproblem for just the pivot
         pivot_problem = _TedderSubProblem(pivot)
 
-        # Pivot forms part of the first connected component of the current subproblem's graph
+        # Pivot forms part of the first connected component of the current 
+        # subproblem's graph
         pivot_problem.connected = True
 
-        # Replace the current subproblem with something new, but sharing the same attributes. See comment below regarding
-        # reuse of current recursive subproblem
+        """
+        Replace the current subproblem with something new, but sharing the same 
+        attributes. See comment below regarding reuse of current recursive 
+        subproblem
+        """
         replacement = _TedderSubProblem()
         replacement.copy(self)
         self.replace_with(replacement)
         replacement.pivot = pivot
 
-        # Must reuse the current subproblem to act as non-neighbor partition of the current recursive subproblem in order
-        # to achieve linear-time
+        # Must reuse the current subproblem to act as non-neighbor partition of 
+        # the current recursive subproblem in order to achieve linear-time
         if not self.has_no_children():
             self.clear_attributes()
             replacement.add_child(self)
@@ -1159,44 +1842,75 @@ class _TedderSubProblem(_TedderTreeNode):
         replacement.add_child(pivot_problem)
         
         if not neighbor_problem.has_no_children():
-            # Neighbors connected to pivot and so also part of first connected component of current subproblem's graph
+            # Neighbors connected to pivot and so also part of first connected 
+            # component of current subproblem's graph
             neighbor_problem.connected = True
             replacement.add_child(neighbor_problem)
-        
+        """
+        Replacement now has children (from left to right):
+            1. neighbor_problem, first child if exists
+            2. pivot_problem, first child if neighbor_problem doesn't exist
+            3. non_neighbor_problem
+        Where neighbor_problem is the subproblem for the elements that are 
+        neighbors to the pivot (if none, this child doesn't exist)
+        pivot_problem is the subproblem with just the pivot in
+        non_neighbor_problem is the subproblem with all the elements that aren't
+        neighbors of the pivot (if none, this child doesn't exist)
+        """
         return replacement
 
     def solve(self):
-        # Compute the MD tree for this subproblem. The root of the MD tree becomes the sole child of this subproblem
-        # OUTPUT:
-        # - The root of the constructed MD tree
+        """
+        Compute the MD tree for this subproblem. The root of the MD tree becomes 
+        the sole child of this subproblem
         
+        OUTPUT:
+        
+        The root of the constructed MD tree
+        """
         # We are currently solving this subproblem
         self.active = True
         
         if self.has_only_one_child():
-            # Subproblem (and thus MD tree) only contains a single node, so nothing to do except process the pivot to
-            # refine the sub-problems in the rest of the recursion tree
+            """
+            Subproblem (and thus MD tree) only contains a single node, so 
+            nothing to do except process the pivot to refine the sub-problems in 
+            the rest of the recursion tree
+            """
             self.pivot = self.first_child
             self.process_neighbors(self.pivot)
             self.pivot.visited = True
             return self.first_child
         
-        # Pivot this sub-problem, and refine the sub-problems in the rest of the recursion tree.
+        # Pivot this sub-problem, and refine the sub-problems in the rest of the 
+        # recursion tree.
         this_problem = self.pivot_problem()
         # Solve the sub-problems defined by the layers
         current_sub_problem = this_problem.first_child
         while current_sub_problem is not None:
-            solved_root = current_sub_problem.solve()
+            if current_sub_problem.first_child != this_problem.pivot:
+                solved_root = current_sub_problem.solve()
+            else:
+                # This problem is just the problem with the pivot, which has 
+                # already been processed and 'solved'
+                solved_root = current_sub_problem.first_child
             current_sub_problem = solved_root.parent.right_sibling
         
-        # MD tree of all but the first component of this sub-problem's graph has already been computed. Remove it for now, 
-        # we merge the two MD trees later
+        """
+        MD tree of all but the first component of this sub-problem's graph has 
+        already been computed. Remove it for now, we merge the two MD trees 
+        later
+        """
         extra_components = this_problem.remove_extra_components()
+
         # Replace the layers by their solutions
         this_problem.remove_layers()
+        
+        # Fix the attributes of the children
         this_problem.complete_alpha_lists()
         this_problem.number_by_comp()
         this_problem.number_by_tree()
+
         # Get the factorizing permutation
         this_problem.refinement()
         this_problem.promotion()
@@ -1208,31 +1922,47 @@ class _TedderSubProblem(_TedderTreeNode):
 
         # Incorporate extra components
         this_problem.merge_components(extra_components)
-        # Must reset fields to have recursion continue to work
-        # Do not reset 'visited' field since we need to know which nodes have been pivots for alpha-list calculations
+
+        """
+        Must reset fields to have recursion continue to work
+        Do not reset 'visited' field since we need to know which nodes have been 
+        pivots for alpha-list calculations
+        """
         this_problem.clear_all_but_visited()
 
+        # Return the finished MD tree, which is this_problem's first child.
         return this_problem.first_child
 
     def clear_all_but_visited(self):
-        # For all nodes in this sub-problems's MD tree, clears all fields except 'visited'
+        # For all nodes in this sub-problems's MD tree, clears all fields except 
+        # 'visited'
         self.first_child.clear_all()
 
     def remove_degenerate_duplicates(self):
-        # Removes consecutively appearing degenerate nodes of the same type in this sub-problem's MD tree
+        """
+        Removes consecutively appearing degenerate nodes of the same type in 
+        this sub-problem's MD tree. 
+        A node is degenerate if its type is degenerate, that is, SERIAL or
+        PARALLEL
+        """
         self.first_child.remove_degenerate_duplicates_from_subtree()
     
     def merge_components(self, new_components):
         """
-        Takes the MD tree for this sub-problem and merges it with the MD tree rooted at the supplied node. If the roots
-        of both trees are parallel, then the former's children are made children of the latter. Otherwise, a new root 
-        is created with its children being the roots of hte two trees in question. The tree resulting from this merge 
-        becomes the MD tree of this subproblem.
+        Takes the MD tree for this sub-problem and merges it with the MD tree 
+        rooted at the supplied node. If the roots of both trees are parallel, 
+        then the former's children are made children of the latter. Otherwise, 
+        a new root is created with its children being the roots of the two 
+        trees in question. The tree resulting from this merge becomes the MD 
+        tree of this subproblem.
+
         INPUT:
-        - 'new_components' -- _TedderMDNode
+        
+        - ``new_components`` -- _TedderMDNode
         """
         first_component = self.first_child
         if new_components is None:
+            # No new components to merge, so can just end the function now
             return
         elif new_components.type is NodeType.PARALLEL:
             if first_component.type is NodeType.PARALLEL:
@@ -1248,12 +1978,15 @@ class _TedderSubProblem(_TedderTreeNode):
         
     def assemble_tree(self):
         """
-        Takes the factorizing permutation with the strong modules containing x properly delineated and assembles the
-        MD tree. Creates a spline of new modules for each strong module containing x, and affixes to these the 
-        subtrees forming the permutation, based on the position of each subtree relative to the nested strong modules
+        Takes the factorizing permutation with the strong modules containing x 
+        properly delineated and assembles the MD tree. 
+        Creates a spline of new modules for each strong module containing x, and 
+        affixes to these the subtrees forming the permutation, based on the 
+        position of each subtree relative to the nested strong modules 
         containing x.
-        Replaces the factorizing permutation within the current subproblem with the MD tree assembled. That is, the
-        subproblem is made to have one child, the root of the MD tree constructed.
+        Replaces the factorizing permutation within the current subproblem with 
+        the MD tree assembled. That is, the subproblem is made to have one child, 
+        the root of the MD tree constructed.
         """
         left = self.pivot.parent.left_sibling
         right = self.pivot.parent.right_sibling
@@ -1297,49 +2030,66 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def delineation(self):
         """
-        Uses the factorizing permutation resulting from promotion, the active edges between the vertices, and the 
-        (co-)components calculated recursively to identify and delineate the strong modules containing x.
+        Uses the factorizing permutation resulting from promotion, the active 
+        edges between the vertices, and the (co-)components calculated 
+        recursively to identify and delineate the strong modules containing x.
         """
+        # Create the factorising permutation elements for each MD tree
         self.build_permutation()
+
+        # Compute and fix the attributes of the elements
         self.determine_left_co_comp_fragments()
         self.determine_right_comp_fragments()
         self.determine_right_layer_neighbor()
         self.compute_fact_perm_edges()
         self.compute_mu()
+
+        # Delineate the strong modules containing x
         self.delineate()
 
     def compute_mu(self):
         # Computes the mu-value for each factorizing permutation element
+
         first_element = self.first_child
         current = first_element
         pivot_element = self.pivot.parent
-        
-        # Initialize mu-values for those right of pivot; this is their default value
+
+        # Initialize mu-values for those right of pivot; this is their default 
+        # value
         while current is not None:
             current.mu = first_element
             current = current.right_sibling
         
-        # mu-values determined only by looking at elements to the left of the pivot
+        # mu-values determined only by looking at elements to the left of the 
+        # pivot
         current = self.first_child
         while current != pivot_element:
             next_element = current.right_sibling
             neighbor_list = current.neighbors
             for neighbor in neighbor_list:
-                # Neighbor to the left of pivot is universal to all up to current, and also adjacent to current, 
-                # so mu gets updated to next_element
+                """
+                Neighbor to the left of pivot is universal to all up to current, 
+                and also adjacent to current, so mu gets updated to next_element
+                """
                 if neighbor.mu.index == current.index:
                     neighbor.mu = next_element
                 
-                # Current has an edge past previous farthest edge, so must update mu.
+                # Current has an edge past previous farthest edge, so must 
+                # update mu.
                 if neighbor.index > current.mu.index:
                     current.mu = neighbor
             current = next_element
         
     def build_fact_perm_list(self):
-        # Builds a list containing the factorizing permutation elements in order. Thus, the index of each factorizing 
-        # permutation element is their index in the array
-        # OUTPUT:
-        # - The array containing the factorizing permutation
+        """
+        Builds a list containing the factorizing permutation elements in order. 
+        Thus, the index of each factorizing permutation element is their index 
+        in the array
+        
+        OUTPUT:
+        
+        The array containing the factorizing permutation
+        """
         fact_perm = []
         current_element = self.first_child
         while current_element is not None:
@@ -1349,12 +2099,14 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def compute_fact_perm_edges(self):
         """
-        Determines the edges between factorizing permutation elements on either side of the pivot and explicitly adds
-        these edges as adjacencies of the factorizing permutation elements in question. 
-        Two factorizing permutation elements are considered adjacent if there is a join between the leaves/vertices in the
-        trees forming them
+        Determines the edges between factorizing permutation elements on either 
+        side of the pivot and explicitly add these edges as adjacencies of the 
+        factorizing permutation elements in question. 
+        Two factorizing permutation elements are considered adjacent if there is 
+        a join between the leaves/vertices in the trees forming them.
         """
-        # Change the comp_number of each vertex to the index of the factorizing permutation element to which it belongs
+        # Change the comp_number of each vertex to the index of the factorizing 
+        # permutation element to which it belongs
         current_element = self.first_child
         while current_element is not None:
             leaves_list = current_element.get_leaves()
@@ -1368,7 +2120,8 @@ class _TedderSubProblem(_TedderTreeNode):
         for element in fact_perm_list:
             element_sizes.append(len(element.get_leaves()))
 
-        # Add a neighbor every time there is an edge between factorizing permutation elements on either side of the pivot
+        # Add a neighbor every time there is an edge between factorizing 
+        # permutation elements on either side of the pivot
         current_element = self.first_child
         while current_element is not None:
             leaves_list = current_element.get_leaves()
@@ -1407,9 +2160,11 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def delineate(self):
         """
-        For each strong module containing x, inserts a pair of markers to delineate the module; one marker is inserted 
-        immediately to the left of the module's left boundary, and another immediately to the right of the module's 
-        right boundary. Markers are _TedderFactPermElements whose index is -1
+        For each strong module containing x, inserts a pair of markers to 
+        delineate the module; one marker is inserted immediately to the left of 
+        the module's left boundary, and another immediately to the right of the 
+        module's right boundary. Markers are _TedderFactPermElements whose index 
+        is -1
         """
         pivot_element = self.pivot.parent
         # Find the last element in the permutation
@@ -1430,7 +2185,8 @@ class _TedderSubProblem(_TedderTreeNode):
         while left is not None or right is not None:
             series_module_formed = False
 
-            # If a series module is possible, greedily adds the elements composing it
+            # If a series module is possible, greedily adds the elements 
+            # composing it
             while (left is not None and
                     left.mu.index <= right_last_in.index and
                     not left.has_left_co_comp_fragment):
@@ -1440,8 +2196,8 @@ class _TedderSubProblem(_TedderTreeNode):
             
             parallel_module_formed = False
             
-            # If a parallel module is possible (and a series module has not already been formed), greedily adds the 
-            # elements composing it
+            # If a parallel module is possible (and a series module has not 
+            # already been formed), greedily adds the elements composing it
             while (not series_module_formed and right is not None and
                     right.mu.index >= left_last_in.index and
                     not right.has_right_comp_fragment and 
@@ -1452,8 +2208,11 @@ class _TedderSubProblem(_TedderTreeNode):
             
             left_queue = []
             if not series_module_formed and not parallel_module_formed:
-                # Neither a series or parallel module could be formed, so must form a prime module (neither left nor 
-                # will be None), which must contain the first co-component to the left of the pivot.
+                """
+                Neither a series or parallel module could be formed, so must 
+                form a prime module (neither left nor will be None), which 
+                must contain the first co-component to the left of the pivot.
+                """
                 while True:
                     left_queue.append(left)
                     left_last_in = left
@@ -1464,15 +2223,18 @@ class _TedderSubProblem(_TedderTreeNode):
             right_queue = []
             has_right_edge = False
 
-            # Add elements to the prime module one at a time using a forcing rule
+            # Add elements to the prime module one at a time using a forcing 
+            # rule
             while len(left_queue) != 0 or len(right_queue) != 0:
                 # Add elements from the left of the pivot
                 while len(left_queue) != 0:
                     current_left = left_queue.pop(0)
 
-                    # Must add all elements up to mu once current_left is included in the module
+                    # Must add all elements up to mu once current_left is 
+                    # included in the module
                     while current_left.mu.index > right_last_in.index:
-                        # Once part of a component is added, all of it must be added
+                        # Once part of a component is added, all of it must be 
+                        # added
                         while True:
                             right_queue.append(right)
                             right_last_in = right
@@ -1486,9 +2248,11 @@ class _TedderSubProblem(_TedderTreeNode):
                 while len(right_queue) != 0:
                     current_right = right_queue.pop(0)
 
-                    # Must add all elements up to mu once current_right is included in the module
+                    # Must add all elements up to mu once current_right is 
+                    # included in the module
                     while current_right.mu.index < left_last_in.index:
-                        # Once part of a co-component is added, all of it must be added
+                        # Once part of a co-component is added, all of it must 
+                        # be added
                         while True:
                             left_queue.append(left)
                             left_last_in = left
@@ -1496,8 +2260,11 @@ class _TedderSubProblem(_TedderTreeNode):
                             if not left_last_in.has_left_co_comp_fragment:
                                 break
         
-            # Added to the module an element to the right of x with an edge to a layer to its right, so the module must
-            # be the entire graph in this case
+            """
+            Added to the module an element to the right of x with an edge to a 
+            layer to its right, so the module must be the entire graph in this 
+            case
+            """
             if has_right_edge:
                 left_last_in = first_element
                 right_last_in = last_element
@@ -1512,9 +2279,11 @@ class _TedderSubProblem(_TedderTreeNode):
     
     def build_permutation(self):
         """
-        Replaces each tree in this subproblem's forest with a _TedderFactPermElement object, making the root of the tree
-        the child of the _TedderFactPermElement. The new _TedderFactPermElements are numbered from left to right starting
-        at 0, and these numbers are used as their index.
+        Replaces each tree in this subproblem's forest with a 
+        _TedderFactPermElement object, making the root of the tree the child of 
+        the _TedderFactPermElement. The new _TedderFactPermElements are numbered 
+        from left to right starting at 0, and these numbers are used as their 
+        index.
         """
         current = self.first_child
         num_fact_perm_elements = 0
@@ -1528,11 +2297,12 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def determine_left_co_comp_fragments(self):
         """
-        For each co-component of G[N(x)], determines if some portion of it appears as part of a factorizing permutation
-        element to its left.
+        For each co-component of G[N(x)], determines if some portion of it 
+        appears as part of a factorizing permutation element to its left.
 
-        We take advantage of the fact that co-components of G[N(x)] appear consecutively and all nodes within them are
-        numbered according to their membership in these co-components.
+        We take advantage of the fact that co-components of G[N(x)] appear 
+        consecutively and all nodes within them are numbered according to their 
+        membership in these co-components.
         """
         current = self.first_child
         last_comp_num = -1
@@ -1546,10 +2316,12 @@ class _TedderSubProblem(_TedderTreeNode):
     
     def determine_right_comp_fragments(self):
         """
-        For the components of G[N_2] (the vertices distance 2 from x), determines if some portion of it appears as part
-        of a factorizing permutation element to its right.
+        For the components of G[N_2] (the vertices distance 2 from x), 
+        determines if some portion of it appears as part of a factorizing 
+        permutation element to its right.
 
-        We use an approach similar to that applied in 'determine_left_co_comp_fragments'
+        We use an approach similar to that applied in the function
+        'determine_left_co_comp_fragments'
         """
         current = self.pivot.parent.right_sibling
         last = None
@@ -1563,8 +2335,11 @@ class _TedderSubProblem(_TedderTreeNode):
             current = current.right_sibling
 
     def determine_right_layer_neighbor(self):
-        # For the factorizing permutation elements of G[N_2] (vertices distance 2 from x), determines if each has an
-        # edge to N_3 (vertices distance 3 from x)
+        """
+        For the factorizing permutation elements of G[N_2] (vertices distance 2 
+        from x), determines if each has an edge to N_3 (vertices distance 3 
+        from x)
+        """
         current = self.pivot.parent.right_sibling
         while current is not None:
             current_tree = current.first_child
@@ -1579,11 +2354,16 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def promotion(self):
         """
-        All nodes labelled by one of the two split marks are promoted to depth-0 in this subproblem's forest. First the
-        nodes marked by left splits are promoted, then those marked by right splits. Nodes without children or only a 
-        single child are deleted, and in the latter instance replaced by their lone child.
-        Precondition: If a node 'n' has a split mark of type 'x', then all its ancestors in the forest also have a split
-        mark of type 'x'.
+        All nodes labelled by one of the two split marks are promoted to depth-0 
+        in this subproblem's forest. First the nodes marked by left splits are 
+        promoted, then those marked by right splits. Nodes without children or 
+        only a single child are deleted, and in the latter instance replaced by 
+        their lone child.
+        
+        PRECONDITION: 
+        
+        If a node 'n' has a split mark of type 'x', then all its ancestors in 
+        the forest also have a split mark of type 'x'.
         """
         self.promote_one_direction(NodeSplit.LEFT_SPLIT)
         self.promote_one_direction(NodeSplit.RIGHT_SPLIT)
@@ -1591,11 +2371,19 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def promote_one_direction(self, split_type):
         """
-        All nodes labelled by the supplied split mark (split_type) are promoted to depth-0 in this subproblem's forest.
-        Nodes without children or only a single child are deleted, and in the latter instance replaced by their lone child.
-        Precondition: If a node is marked by the supplied type, then all its ancestors must also be marked by this type.
+        All nodes labelled by the supplied split mark (split_type) are promoted 
+        to depth-0 in this subproblem's forest. Nodes without children or only 
+        a single child are deleted, and in the latter instance replaced by their 
+        lone child.
+
         INPUT:
-            - 'split_type' -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+        
+        - ``split_type`` -- NodeSplit, LEFT_SPLIT or RIGHT_SPLIT
+
+        PRECONDITION: 
+        
+        If a node is marked by the supplied type, then all its ancestors must 
+        also be marked by this type.
         """
         current = self.first_child
         while current is not None:
@@ -1612,16 +2400,20 @@ class _TedderSubProblem(_TedderTreeNode):
             current = next_node
     
     def refinement(self):
-        # Every vertex in this subproblem uses its active edges to refine the recursively computed MD trees other than its own.
+        # Every vertex in this subproblem uses its active edges to refine the 
+        # recursively computed MD trees other than its own.
         leaf_list = self.get_leaves()
         for leaf in leaf_list:
             self.refine_with(leaf)
     
     def refine_with(self, refiner):
         """
-        Effects the changes that result from a single vertex refining with it's active edges
+        Effects the changes that result from a single vertex refining with it's 
+        active edges
+        
         INPUT:
-        - 'refiner' -- _TedderMDLeafNode
+        
+        - ``refiner`` -- _TedderMDLeafNode
         """
         sub_tree_roots = self.get_max_subtrees(refiner.alpha)
         sibling_groups = self.group_sibling_nodes(sub_tree_roots)
@@ -1634,9 +2426,10 @@ class _TedderSubProblem(_TedderTreeNode):
                 i += 1
         
         """
-        Split trees when sibling groups are children of the root, and split nodes when not. In the latter case, mark the two
-        nodes resulting from the split, plus all their ancestors as having been marked, also mark the children of all prime
-        ancestors.
+        Split trees when sibling groups are children of the root, and split 
+        nodes when not. In the latter case, mark the two nodes resulting from 
+        the split, plus all their ancestors as having been marked, also mark the 
+        children of all prime ancestors.
         """
         for current in sibling_groups:
             # Determine the split type.
@@ -1667,8 +2460,9 @@ class _TedderSubProblem(_TedderTreeNode):
                     current_parent.add_child(current)
                 else:
                     """
-                    To achieve linear time, must reuse the parent node to represent the non-neighbor partition. See pivot()
-                    for another example of this trick.
+                    To achieve linear time, must reuse the parent node to 
+                    represent the non-neighbor partition. See the function 
+                    'pivot' for another example of this trick.
                     """
                     replacement = _TedderMDNode()
                     replacement.copy(current_parent)
@@ -1683,17 +2477,24 @@ class _TedderSubProblem(_TedderTreeNode):
     
     def group_sibling_nodes(self, nodes):
         """
-        Takes the collection of the supplied nodes (nodes) and makes those that are siblings in one of this subproblem's
-        recursively computed MD trees the children of a new node inserted in their place. New nodes inserted have the
-        same attributes as their parents. Nodes in the collection without siblings are left unchanged.
+        Takes the collection of the supplied nodes (nodes) and makes those that 
+        are siblings in one of this subproblem's recursively computed MD trees 
+        the children of a new node inserted in their place. New nodes inserted 
+        have the same attributes as their parents. Nodes in the collection 
+        without siblings are left unchanged.
+        
         INPUT:
-        - nodes -- List of _TedderMDNode
+        
+        - ``nodes`` -- List of _TedderMDNode
+        
         OUTPUT:
-        - A list consisting of the supplied nodes without siblings and the new nodes inserted in place of siblings
+        
+        A list consisting of the supplied nodes without siblings and the new 
+        nodes inserted in place of siblings
         """
 
-        # Moves non-root nodes to front of parent's child list. Marks each node and marks their parents. Parents are marked
-        # once for each child node.
+        # Moves non-root nodes to front of parent's child list. Marks each node 
+        # and marks their parents. Parents are marked once for each child node.
         parents = []
         for node in nodes:
             node.num_marks += 1
@@ -1707,7 +2508,8 @@ class _TedderSubProblem(_TedderTreeNode):
         # Collects the sibling groups formed.
         sibling_groups = []
 
-        # First, trivial cases of nodes without siblings, meaning the roots of trees ...
+        # First, trivial cases of nodes without siblings, meaning the roots of 
+        # trees ...
         for node in nodes:
             if node.is_root():
                 node.clear_marks()
@@ -1724,7 +2526,8 @@ class _TedderSubProblem(_TedderTreeNode):
             else:
                 i += 1
         
-        # Next, group sibling nodes as children of a new node inserted in their place.
+        # Next, group sibling nodes as children of a new node inserted in their 
+        # place.
         for current_parent in parents:
             current_parent.clear_marks()
             grouped_children = _TedderMDNode()
@@ -1742,18 +2545,24 @@ class _TedderSubProblem(_TedderTreeNode):
     
     def get_max_subtrees(self, leaves):
         """
-        Finds the set of maximal subtrees of this subproblem's recursively computed forest of MD trees where the leaves
-        of each subtree are members of the supplied collection of vertices.
+        Finds the set of maximal subtrees of this subproblem's recursively 
+        computed forest of MD trees where the leaves of each subtree are members 
+        of the supplied collection of vertices.
+        
         INPUT:
-        - leaves -- List of _TedderMDLeafNode
+        
+        - ``leaves`` -- List of _TedderMDLeafNode
+        
         OUTPUT:
-        - A list of the roots of each maximal subtree
+        
+        A list of the roots of each maximal subtree
         """
         active = leaves[::]
         discharged = []
         """
-        Marking process: all nodes in maximal subtrees fully marked; the only other marked nodes are parents of roots
-        of maximal subtrees, and these are partially marked,
+        Marking process: all nodes in maximal subtrees fully marked; the only 
+        other marked nodes are parents of roots of maximal subtrees, and these 
+        are partially marked,
         """
         i = 0
         while active != []:
@@ -1768,7 +2577,8 @@ class _TedderSubProblem(_TedderTreeNode):
                         i += 1
                 discharged.append(current)
             i = 0
-        # Removes marks on all nodes; leaves discharged list so that it only holds roots of maximal subtrees
+        # Removes marks on all nodes; leaves discharged list so that it only 
+        # holds roots of maximal subtrees
         i = 0
         while i < len(discharged):
             current = discharged[i]
@@ -1787,8 +2597,8 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def remove_layers(self):
         """
-        Replaces the subproblems of this subproblem with their recursively computed solutions (i.e. replaces the layers
-        with their MD trees).
+        Replaces the subproblems of this subproblem with their recursively 
+        computed solutions (i.e. replaces the layers with their MD trees).
         """
         current_layer = self.first_child
         while current_layer is not None:
@@ -1798,8 +2608,9 @@ class _TedderSubProblem(_TedderTreeNode):
     
     def number_by_tree(self):
         """
-        This subproblem's recursively computed MD trees are numbered one by one, starting at 0 for the tree to the left
-        of x; every node in the tree is assigned that tree's number.
+        This subproblem's recursively computed MD trees are numbered one by one, 
+        starting at 0 for the tree to the left of x; every node in the tree is 
+        assigned that tree's number.
         """
         tree_number = 0
         current_root = self.first_child
@@ -1810,10 +2621,13 @@ class _TedderSubProblem(_TedderTreeNode):
     
     def number_by_comp(self):
         """
-        Numbers the nodes in the recursively computed MD trees for this subproblem. Nodes in the tree to the left of x are
-        numbered by co-component and those in trees to the right of x are numbered by component. The numbering starts at 0,
-        and the tree to the left x is considered first. All nodes in a particular (co-)component receive the same number,
-        which is one more than the previous (co-)component. The roots of trees are therefore left unnumbered sometimes.
+        Numbers the nodes in the recursively computed MD trees for this 
+        subproblem. Nodes in the tree to the left of x are numbered by 
+        co-component and those in trees to the right of x are numbered by 
+        component. The numbering starts at 0, and the tree to the left x is 
+        considered first. All nodes in a particular (co-)component receive the 
+        same number, which is one more than the previous (co-)component. The 
+        roots of trees are therefore left unnumbered sometimes.
         """
         comp_number = 0
         after_pivot = False
@@ -1829,8 +2643,11 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def complete_alpha_lists(self):
         """
-        For each vertex x in this subproblem, looks at alpha(x), and if y \in alpha(x), adds x to alpha(y). 
+        For each vertex x in this subproblem, looks at alpha(x), and if y in 
+        alpha(x), adds x to alpha(y). 
+
         Post-condition:
+        
         no alpha-list contains duplicate entries
         """
 
@@ -1857,10 +2674,14 @@ class _TedderSubProblem(_TedderTreeNode):
     
     def remove_extra_components(self):
         """
-        Determines if this subproblem's graph has more than one component and removes them if it does.
+        Determines if this subproblem's graph has more than one component and 
+        removes them if it does.
+        
         OUTPUT:
-        - If more than one component exists, returns the root of the recursively computed MD tree for the graph consisting 
-        of all but the first component. Returns None otherwise.
+        
+        If more than one component exists, returns the root of the recursively 
+        computed MD tree for the graph consisting of all but the first 
+        component. Returns None otherwise.
         """
         current_sub_problem = self.first_child
         while current_sub_problem is not None and current_sub_problem.connected:
@@ -1876,12 +2697,18 @@ class _TedderSubProblem(_TedderTreeNode):
 
     def process_neighbors(self, pivot):
         """
-        Refines the subproblems of the recursion tree according to the neighborhood of a pivot. If a neighbor has
-        already been visited, adds the pivot to that neighbor's alpha-list.
+        Refines the subproblems of the recursion tree according to the 
+        neighborhood of a pivot. If a neighbor has already been visited, adds 
+        the pivot to that neighbor's alpha-list.
+        
         INPUT:
-        - 'pivot' -- _TedderMDLeafNode
+        
+        - ``pivot`` -- _TedderMDLeafNode
+        
         OUTPUT:
-        - A subproblem consisting of the neighbors of 'pivot' in the same subproblem as 'pivot'
+        
+        A subproblem consisting of the neighbors of 'pivot' in the same 
+        subproblem as 'pivot'
         """
         piv_neighs_list = pivot.neighbors
         neighbor_problem = _TedderSubProblem()
@@ -1897,14 +2724,18 @@ class _TedderSubProblem(_TedderTreeNode):
     def pull_forward(self, leaf):
         """
         Determines which of the following three cases applies:
-        (1): The given vertex must be moved forward from its current subproblem to the immediately preceding subproblem
-        (i.e. it is found to occupy the previous layer)
-        (2): A new subproblem must be formed consisting of the given vertex and placed immediately before its current
-        subproblem (i.e. a new layer must be formed initially consisting of only this vertex)
+        (1): The given vertex must be moved forward from its current subproblem 
+        to the immediately preceding subproblem (i.e. it is found to occupy the 
+        previous layer)
+        (2): A new subproblem must be formed consisting of the given vertex and 
+        placed immediately before its current subproblem (i.e. a new layer must 
+        be formed initially consisting of only this vertex)
         (3): The recursion tree remains unchanged
         In the first two cases, it effects the necessary changes
+        
         INPUT:
-        - 'leaf' -- _TedderMDLeafNode
+        
+        - ``leaf`` -- _TedderMDLeafNode
         """
         current_layer = leaf.parent
         if current_layer is not None and current_layer.connected:
@@ -1917,7 +2748,8 @@ class _TedderSubProblem(_TedderTreeNode):
             prev_layer = _TedderSubProblem()
             prev_layer.insert_before(current_layer)
 
-            # The new layer is connected to the first component in its subproblem through the pivot.
+            # The new layer is connected to the first component in its 
+            # subproblem through the pivot.
             prev_layer.connected = True
         
         if prev_layer is not None and prev_layer.connected:
@@ -2086,602 +2918,18 @@ def tedder_algorithm(graph):
     if not graph.order():
         return create_prime_node()
 
-    # Preprocessing the graph into a dictionary of _TedderMDLeafNodes, then add the nodes as children to 
-    # the initial recursive subproblem
-    vertex_list = graph.vertices()
-    vertex_dictionary = {}
-    # A dictionary vertex --> node, where 
-    # 'vertex' is a vertex of the graph 'graph', and
-    # 'node' is the _TedderMDLeafNode associated with 'vertex'
-    for vertex in vertex_list:
-        vertex_dictionary[vertex] = _TedderMDLeafNode(vertex)
-    
-    # Populate the nodes with the neighbors of their vertices, and add them to the subproblem
+    # Create the subproblem object
     main_problem = _TedderSubProblem()
-    for vertex in vertex_list:
-        node = vertex_dictionary[vertex]
-        neighbor_list = graph.neighbors(vertex)
-        for neighbor in neighbor_list:
-            node.neighbors.append(vertex_dictionary[neighbor])
-        # Add vertex as a child to the subproblem
-        main_problem.add_child(node)
 
-    # Recursively solve the subproblems
-    def _rec_solve(main_problem):
-        # Compute the MD tree for this subproblem. The root of the MD tree becomes the sole child of this subproblem
-        # OUTPUT:
-        # - The root of the constructed MD tree
-        
-        # We are currently solving this subproblem
-        main_problem.active = True
-        
-        if main_problem.has_only_one_child():
-            # Subproblem (and thus MD tree) only contains a single node, so nothing to do except process the pivot to
-            # refine the sub-problems in the rest of the recursion tree
-            main_problem.pivot = main_problem.first_child
-            main_problem.process_neighbors(main_problem.pivot)
-            main_problem.pivot.visited = True
-            return main_problem.first_child
-        
-        # Pivot this sub-problem, and refine the sub-problems in the rest of the recursion tree.
-        # main_problem = main_problem.pivot_problem()
-        pivot = main_problem.first_child
-        pivot.visited = True
-        neighbor_problem = main_problem.process_neighbors(pivot)
-        pivot.remove()
-        pivot_problem = _TedderSubProblem(pivot)
-
-        # Pivot forms part of the first connected component of the current subproblem's graph
-        pivot_problem.connected = True
-
-        # Replace the current subproblem with something new, but sharing the same attributes. See comment below regarding
-        # reuse of current recursive subproblem
-        replacement = _TedderSubProblem()
-        replacement.copy(main_problem)
-        main_problem.replace_with(replacement)
-        replacement.pivot = pivot
-
-        # Must reuse the current subproblem to act as non-neighbor partition of the current recursive subproblem in order
-        # to achieve linear-time
-        if not main_problem.has_no_children():
-            main_problem.clear_attributes()
-            replacement.add_child(main_problem)
-        
-        replacement.add_child(pivot_problem)
-        
-        if not neighbor_problem.has_no_children():
-            # Neighbors connected to pivot and so also part of first connected component of current subproblem's graph
-            neighbor_problem.connected = True
-            replacement.add_child(neighbor_problem)
-        
-        main_problem = replacement
-
-        # main_problem should have a pivot now
-        assert(main_problem.pivot is not None)
-
-        # Solve the sub-problems defined by the layers
-        current_sub_problem = main_problem.first_child
-        while current_sub_problem is not None:
-            solved_root = _rec_solve(current_sub_problem)
-            # _rec_solve shouldn't return None
-            assert(solved_root is not None)
-            current_sub_problem = solved_root.parent.right_sibling
-        
-        # MD tree of all but the first component of this sub-problem's graph has already been computed. Remove it for now, 
-        # we merge the two MD trees later
-        #extra_components = main_problem.remove_extra_components()
-        current_sub_problem = main_problem.first_child
-        while current_sub_problem is not None and current_sub_problem.connected:
-            current_sub_problem = current_sub_problem.right_sibling
-        
-        if current_sub_problem is not None:
-            current_sub_problem.remove()
-            root = current_sub_problem.first_child
-            root.remove()
-            extra_components = root
-        else:
-            extra_components = None
-        
-        # Replace the layers by their recursively computed solutions
-        #main_problem.remove_layers()
-        current_layer = main_problem.first_child
-        while current_layer is not None:
-            next_layer = current_layer.right_sibling
-            current_layer.replace_with(current_layer.first_child)
-            current_layer = next_layer
-
-
-        # For each vertex x in this subproblem, looks at alpha(x), and if y \in alpha(x), adds x to alpha(y), 
-        # then removes duplicates
-        #main_problem.complete_alpha_lists()
-
-        # Completes the list (possibly creating duplicate entries within them).
-        leaves_list = main_problem.get_leaves()
-        for leaf in leaves_list:
-            alpha_list = leaf.alpha
-            for alpha_node in alpha_list:
-                alpha_node.alpha.append(leaf)
-        
-        # Removes duplicate entries in the lists.
-        for leaf in leaves_list:
-            alpha_list = leaf.alpha
-            i = 0
-            while i < len(alpha_list):
-                current_alpha_neighbor = alpha_list[i]
-                if current_alpha_neighbor.is_marked():
-                    alpha_list.pop(i)
-                else:
-                    current_alpha_neighbor.num_marks += 1
-                    i += 1
-            for alpha in alpha_list:
-                alpha.clear_marks()
-
-        """
-        Number the nodes in the recursively computed MD trees for this subproblem. Nodes in the tree to the left of x are
-        numbered by co-component and those in trees to the right of x are numbered by component. The numbering starts at 0,
-        and the tree to the left x is considered first. All nodes in a particular (co-)component receive the same number,
-        which is one more than the previous (co-)component. The roots of trees are therefore left unnumbered sometimes.
-        """
-        #main_problem.number_by_comp()
-        comp_number = 0
-        after_pivot = False
-        current_root = main_problem.first_child
-        while current_root is not None:
-            if current_root == main_problem.pivot:
-                after_pivot = True
-            if after_pivot:
-                comp_number += current_root.number_comps(comp_number, NodeType.PARALLEL)
-            else:
-                comp_number += current_root.number_comps(comp_number, NodeType.SERIES)
-            current_root = current_root.right_sibling
-
-        """
-        Number this subproblem's recursively computed MD trees one by one, starting at 0 for the tree to the left
-        of x; every node in the tree is assigned that tree's number.
-        """
-        #main_problem.number_by_tree()
-        tree_number = 0
-        current_root = main_problem.first_child
-        while current_root is not None:
-            current_root.set_tree_number_for_subtree(tree_number)
-            current_root = current_root.right_sibling
-            tree_number += 1
-        
-        # Get the factorizing permutation
-
-        # Every vertex in this subproblem uses its active edges to refine the recursively computed MD trees other than its own.
-        #main_problem.refinement()
-        leaf_list = main_problem.get_leaves()
-        for leaf in leaf_list:
-            #main_problem.refine_with(leaf)
-            #Effect the changes that result from a single vertex refining with it's active edges
-            refiner = leaf
-            sub_tree_roots = main_problem.get_max_subtrees(refiner.alpha)
-            sibling_groups = main_problem.group_sibling_nodes(sub_tree_roots)
-            # Remove roots of trees.
-            i = 0
-            while i < len(sibling_groups):
-                if sibling_groups[i].is_root():
-                    sibling_groups.pop(i)
-                else:
-                    i += 1
-        
-            """
-            Split trees when sibling groups are children of the root, and split nodes when not. In the latter case, mark the two
-            nodes resulting from the split, plus all their ancestors as having been marked, also mark the children of all prime
-            ancestors.
-            """
-            for current in sibling_groups:
-                # Determine the split type.
-                pivot_tree_number = main_problem.pivot.tree_number
-                refiner_tree_number = refiner.tree_number
-                current_tree_number = current.tree_number
-                if current_tree_number < pivot_tree_number or refiner_tree_number < current_tree_number:
-                    split_type = NodeSplit.LEFT_SPLIT
-                else:
-                    split_type = NodeSplit.RIGHT_SPLIT
-                current_parent = current.parent
-                if current_parent.is_root():
-                    # Parent is a root, must split the tree.
-                    if split_type == NodeSplit.LEFT_SPLIT:
-                        current.insert_before(current_parent)
-                    else:
-                        current.insert_after(current_parent)
-                    new_sibling = current_parent
-                    if current_parent.has_only_one_child():
-                        current_parent.replace_this_by_its_children()
-                    if current_parent.has_no_children():
-                        current_parent.remove()
-                else:
-                    # Parent is not a root, must split the node.
-                    current.remove()
-                    if current_parent.has_only_one_child():
-                        new_sibling = current_parent.first_child
-                        current_parent.add_child(current)
-                    else:
-                        """
-                        To achieve linear time, must reuse the parent node to represent the non-neighbor partition. See pivot()
-                        for another example of this trick.
-                        """
-                        replacement = _TedderMDNode()
-                        replacement.copy(current_parent)
-                        current_parent.replace_with(replacement)
-                        replacement.add_child(current)
-                        replacement.add_child(current_parent)
-                        new_sibling = current_parent
-                current.add_split_mark(split_type)
-                new_sibling.add_split_mark(split_type)
-                current.mark_ancestors_by_split(split_type)
-                new_sibling.mark_ancestors_by_split(split_type)
-
-        """
-        All nodes labelled by one of the two split marks are promoted to depth-0 in this subproblem's forest. First the
-        nodes marked by left splits are promoted, then those marked by right splits. Nodes without children or only a 
-        single child are deleted, and in the latter instance replaced by their lone child.
-        """   
-        #main_problem.promotion()
-        main_problem.promote_one_direction(NodeSplit.LEFT_SPLIT)
-        main_problem.promote_one_direction(NodeSplit.RIGHT_SPLIT)
-        main_problem.clear_split_marks()
-
-        # Use the factorizing permutation resulting from promotion, the active edges between the vertices,
-        # and the (co-)components calcualted recursively to identify and delineate the strong modules
-        # containing x, then build the tree
-        #main_problem.delineation()
-
-        """
-        Replace each tree in this subproblem's forest with a _TedderFactPermElement object, making the root of the tree
-        the child of the _TedderFactPermElement. The new _TedderFactPermElements are numbered from left to right starting
-        at 0, and these numbers are used as their index.
-        """
-        current = main_problem.first_child
-        num_fact_perm_elements = 0
-        while current is not None:
-            next_node = current.right_sibling 
-            new_element = _TedderFactPermElement(num_fact_perm_elements)
-            new_element.insert_before(current)
-            new_element.add_child(current)
-            num_fact_perm_elements += 1
-            current = next_node
-
-        # There should be at least one _TedderFactPermElement
-        assert(main_problem.first_child is not None)
-
-        """
-        For each co-component of G[N(x)], determine if some portion of it appears as part of a factorizing permutation
-        element to its left.
-
-        We take advantage of the fact that co-components of G[N(x)] appear consecutively and all nodes within them are
-        numbered according to their membership in these co-components.
-        """
-        current = main_problem.first_child
-        last_comp_num = -1
-
-        while current.first_child != main_problem.pivot:
-            current_comp_num = current.first_child.comp_number
-            if last_comp_num != -1 and last_comp_num == current_comp_num:
-                current.has_left_co_comp_fragment = True
-            last_comp_num = current_comp_num
-            current = current.right_sibling
-
-        """
-        For the components of G[N_2] (the vertices distance 2 from x), determine if some portion of it appears as part
-        of a factorizing permutation element to its right.
-
-        We use an approach similar to that applied above
-        """
-        current = main_problem.pivot.parent.right_sibling
-        last = None
-        last_comp_num = -1
-        while current is not None:
-            current_comp_num = current.first_child.comp_number
-            if last_comp_num != -1 and last_comp_num == current_comp_num:
-                last.has_right_comp_fragment = True
-            last = current
-            last_comp_num = current_comp_num
-            current = current.right_sibling
-
-        # For the factorizing permutation elements of G[N_2] (vertices distance 2 from x), determine if each has an
-        # edge to N_3 (vertices distance 3 from x)
-        current = main_problem.pivot.parent.right_sibling
-        while current is not None:
-            current_tree = current.first_child
-            current_tree_num = current_tree.tree_number
-            current_leaves_list = current_tree.get_leaves()
-            for leaf in current_leaves_list:
-                alpha_list = leaf.alpha
-                for alpha in alpha_list:
-                    if alpha.tree_number > current_tree_num:
-                        current.has_right_layer_neighbor = True
-            current = current.right_sibling
-
-        """
-        Determine the edges between factorizing permutation elements on either side of the pivot and explicitly add
-        these edges as adjacencies of the factorizing permutation elements in question. 
-        Two factorizing permutation elements are considered adjacent if there is a join between the leaves/vertices in the
-        trees forming them
-        """
-        # Change the comp_number of each vertex to the index of the factorizing permutation element to which it belongs
-        current_element = main_problem.first_child
-        while current_element is not None:
-            leaves_list = current_element.get_leaves()
-            for leaf in leaves_list:
-                leaf.comp_number = current_element.index
-            current_element = current_element.right_sibling
-        
-        # Determine size of each factorizing permutation element.
-        fact_perm_list = main_problem.build_fact_perm_list()
-        element_sizes = []
-        for element in fact_perm_list:
-            element_sizes.append(len(element.get_leaves()))
-
-        # Add a neighbor every time there is an edge between factorizing permutation elements on either side of the pivot
-        current_element = main_problem.first_child
-        while current_element is not None:
-            leaves_list = current_element.get_leaves()
-            for leaf in leaves_list:
-                alpha_list = leaf.alpha
-                for alpha_element in alpha_list:
-                    current_element.neighbors.append(fact_perm_list[alpha_element.comp_number])
-            current_element = current_element.right_sibling
-        
-        # Replace the edges added above with edges if a join exists
-        current_element = main_problem.first_child
-        while current_element is not None:
-            # Count the edges added above and remove duplicates
-            neighbors_list = current_element.neighbors
-            i = 0
-            while i < len(neighbors_list):
-                current_neighbor = neighbors_list[i]
-                if current_neighbor.is_marked():
-                    neighbors_list.pop(i)
-                else:
-                    i += 1
-                current_neighbor.num_marks += 1
-            current_element.neighbors = neighbors_list
-
-            # Add the edge if a join is found to exist
-            new_neighbors = []
-            for neighbor in neighbors_list:
-                my_size = element_sizes[current_element.index]
-                neighbor_size = element_sizes[neighbor.index]
-                if my_size * neighbor_size == neighbor.num_marks:
-                    # There is a join
-                    new_neighbors.append(neighbor)
-                neighbor.clear_marks()
-            current_element.replace_neighbors(new_neighbors)
-            current_element = current_element.right_sibling
-
-        # Computes the mu-value for each factorizing permutation element
-
-        first_element = main_problem.first_child
-        current = first_element
-        pivot_element = main_problem.pivot.parent
-        
-        # Initialize mu-values for those right of pivot; this is their default value
-        while current is not None:
-            current.mu = first_element
-            current = current.right_sibling
-        
-        # mu-values determined only by looking at elements to the left of the pivot
-        current = main_problem.first_child
-        while current != pivot_element:
-            next_element = current.right_sibling
-            neighbor_list = current.neighbors
-            for neighbor in neighbor_list:
-                # Neighbor to the left of pivot is universal to all up to current, and also adjacent to current, 
-                # so mu gets updated to next_element
-                if neighbor.mu.index == current.index:
-                    neighbor.mu = next_element
-                
-                # Current has an edge past previous farthest edge, so must update mu.
-                if neighbor.index > current.mu.index:
-                    current.mu = neighbor
-            current = next_element
-
-        """
-        For each strong module containing x, insert a pair of markers to delineate the module; one marker is inserted 
-        immediately to the left of the module's left boundary, and another immediately to the right of the module's 
-        right boundary. Markers are _TedderFactPermElements whose index is -1
-        """
-        pivot_element = main_problem.pivot.parent
-        # Find the last element in the permutation
-        last_element = pivot_element
-        while last_element.right_sibling is not None:
-            last_element = last_element.right_sibling
-        
-        first_element = main_problem.first_child
-
-        # Current boundaries of module currently being formed.
-        left = pivot_element.left_sibling
-        right = pivot_element.right_sibling
-
-        # The boundaries of the last module created
-        left_last_in = pivot_element
-        right_last_in = pivot_element
-        # Delineates the module one at a time
-        while left is not None or right is not None:
-            series_module_formed = False
-
-            # If a series module is possible, greedily adds the elements composing it
-            # right_last_in shouldn't be None at this point
-            while (left is not None and
-                    left.mu.index <= right_last_in.index and
-                    not left.has_left_co_comp_fragment):
-                series_module_formed = True
-                left_last_in = left
-                left = left.left_sibling
-            
-            parallel_module_formed = False
-            
-            # If a parallel module is possible (and a series module has not already been formed), greedily adds the 
-            # elements composing it
-            # left_last_in shouldn't be None at this point
-            while (not series_module_formed and right is not None and
-                    right.mu.index >= left_last_in.index and
-                    not right.has_right_comp_fragment and 
-                    not right.has_right_layer_neighbor):
-                parallel_module_formed = True
-                right_last_in = right
-                right = right.right_sibling
-            
-            left_queue = []
-            if not series_module_formed and not parallel_module_formed:
-                # Neither a series or parallel module could be formed, so must form a prime module (neither left nor 
-                # will be None), which must contain the first co-component to the left of the pivot.
-                assert(left is not None)
-                assert(right is not None)
-                while True:
-                    left_queue.append(left)
-                    left_last_in = left
-                    left = left.left_sibling
-                    if not left_last_in.has_left_co_comp_fragment:
-                        break
-            
-            right_queue = []
-            has_right_edge = False
-
-            # Add elements to the prime module one at a time using a forcing rule
-            while len(left_queue) != 0 or len(right_queue) != 0:
-                # Add elements from the left of the pivot
-                while len(left_queue) != 0:
-                    current_left = left_queue.pop(0)
-
-                    # Must add all elements up to mu once current_left is included in the module
-                    while current_left.mu.index > right_last_in.index:
-                        # Once part of a component is added, all of it must be added
-                        while True:
-                            right_queue.append(right)
-                            right_last_in = right
-                            right = right.right_sibling
-                            if right_last_in.has_right_layer_neighbor:
-                                has_right_edge = True
-                            if not right_last_in.has_right_comp_fragment:
-                                break
-                
-                # Add elements to the right of the pivot
-                while len(right_queue) != 0:
-                    current_right = right_queue.pop(0)
-
-                    # Must add all elements up to mu once current_right is included in the module
-                    while current_right.mu.index < left_last_in.index:
-                        # Once part of a co-component is added, all of it must be added
-                        while True:
-                            left_queue.append(left)
-                            left_last_in = left
-                            left = left.left_sibling
-                            if not left_last_in.has_left_co_comp_fragment:
-                                break
-        
-            # Added to the module an element to the right of x with an edge to a layer to its right, so the module must
-            # be the entire graph in this case
-            if has_right_edge:
-                left_last_in = first_element
-                right_last_in = last_element
-                left = None
-                right = None
-            
-            # Delineate the module just found
-            left_boundary = _TedderFactPermElement(-1)
-            right_boundary = _TedderFactPermElement(-1)
-            left_boundary.insert_before(left_last_in)
-            right_boundary.insert_after(right_last_in)
-
-        """
-        Take the factorizing permutation with the strong modules containing x properly delineated and assemble the
-        MD tree. Create a spline of new modules for each strong module containing x, and affixe to these the 
-        subtrees forming the permutation, based on the position of each subtree relative to the nested strong modules
-        containing x.
-        Replace the factorizing permutation within the current subproblem with the MD tree assembled. That is, the
-        subproblem is made to have one child, the root of the MD tree constructed.
-        """
-        #main_problem.assemble_tree()
-        left = main_problem.pivot.parent.left_sibling
-        right = main_problem.pivot.parent.right_sibling
-
-        # Smallest strong module containing x is x itself
-        last_module = main_problem.pivot
-
-        while left is not None or right is not None:
-            # Create the spine one module at a time
-            new_module = _TedderMDNode()
-            new_module.add_child(last_module)
-
-            added_pivot_neighbors = False
-            added_pivot_non_neighbors = False
-
-            # Add the subtrees of the new module from N(x)
-            while left.index != -1:
-                new_module.add_children_from(left)
-                old_left = left
-                left = left.left_sibling
-                old_left.remove()
-                added_pivot_neighbors = True
-            # Add the subtrees of the new module from /N(x)
-            while right.index != -1:
-                new_module.add_children_from(right)
-                old_right = right
-                right = right.right_sibling
-                old_right.remove()
-                added_pivot_non_neighbors = True
-            
-            if added_pivot_neighbors and added_pivot_non_neighbors:
-                new_module.type = NodeType.PRIME
-            elif added_pivot_neighbors:
-                new_module.type = NodeType.SERIES
-            else:
-                new_module.type = NodeType.PARALLEL
-            left = left.left_sibling
-            right = right.right_sibling
-            last_module = new_module
-        main_problem.replace_children_with(last_module)
-
-        # Remove consecutively appearing degenerate nodes of the same type in this sub-problem's MD tree
-        #main_problem.remove_degenerate_duplicates()
-        main_problem.first_child.remove_degenerate_duplicates_from_subtree()
-
-        """
-        Take the MD tree for this sub-problem and merge it with the MD tree rooted at the supplied node. If the roots
-        of both trees are parallel, then the former's children are made children of the latter. Otherwise, a new root 
-        is created with its children being the roots of hte two trees in question. The tree resulting from this merge 
-        becomes the MD tree of this subproblem.
-        """
-        #main_problem.merge_components(extra_components)
-        first_component = main_problem.first_child
-        if extra_components is not None and extra_components.type is NodeType.PARALLEL:
-            if first_component.type is NodeType.PARALLEL:
-                extra_components.add_children_from(first_component)
-            else:
-                extra_components.add_child(first_component)
-            main_problem.add_child(extra_components)
-        elif extra_components is not None:
-            new_root = _TedderMDNode(NodeType.PARALLEL)
-            new_root.add_child(first_component)
-            new_root.add_child(extra_components)
-            main_problem.add_child(new_root)
-
-        # Must reset fields to have recursion continue to work
-        # Do not reset 'visited' field since we need to know which nodes have been pivots for alpha-list calculations
-        #main_problem.clear_all_but_visited()
-        main_problem.first_child.clear_all()
-
-        return main_problem.first_child
+    # Populate the subproblem with the vertices of ``graph``
+    main_problem.build_graph(graph)
     
-    tedder_root = _rec_solve(main_problem)
+    # Recursively solve the subproblem
+    tedder_root = main_problem.solve()
 
-    # Post-processing -- turn the _TedderMDNodes and _TedderMDLeafNodes into Nodes using a recursive helper function
-    def _recursive_tedder_to_md(root):
-        if isinstance(root, _TedderMDLeafNode):
-            node = create_normal_node(root.vertex)
-        else:
-            assert(isinstance(root, _TedderMDNode))
-            node = Node(root.type)
-            current_child = root.first_child
-            while current_child is not None:
-                node.children.append(_recursive_tedder_to_md(current_child))
-                current_child = current_child.right_sibling
-        return node
-    return _recursive_tedder_to_md(tedder_root)
+    # Post-processing -- turn the _TedderMDNodes and _TedderMDLeafNodes into 
+    # Nodes using a recursive helper function
+    return tedder_root.to_node()
 
 # ============================================================================
 # Overall Function
@@ -2831,8 +3079,10 @@ def modular_decomposition(graph, algorithm = "habib_maurer"):
         sage: permute_decomposition(2, modular_decomposition, 20, 0.5)
     """
     if algorithm == "habib_maurer":
+        # Use the Habib Maurer algorithm
         return habib_maurer_algorithm(graph)
     elif algorithm == "tedder":
+        # Use the Tedder algorithm
         return tedder_algorithm(graph)
     else:
         raise ValueError('Algorithm must be "habib_maurer" or "tedder"')
