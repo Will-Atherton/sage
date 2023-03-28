@@ -186,7 +186,6 @@ from sage.modular.modform.hecke_operator_on_qexp import hecke_operator_on_qexp
 from sage.modular.modform.j_invariant import j_invariant_qexp
 from sage.modules.free_module_element import vector
 from sage.modules.module import Module
-from sage.plot.plot import plot
 from sage.rings.big_oh import O
 from sage.rings.infinity import Infinity
 from sage.rings.integer_ring import ZZ
@@ -852,10 +851,9 @@ class OverconvergentModularFormsSpace(Module):
             return self.base_extend(x.base_ring()).coordinate_vector(x)
 
         if x.parent() != self:
-                x = self(x)
+            x = self(x)
 
         return vector(self.base_ring(), x.gexp().padded_list(x.gexp().prec()))
-
 
     ##########################################################
     # Pointless routines required by parent class definition #
@@ -927,13 +925,11 @@ class OverconvergentModularFormsSpace(Module):
         else:
             return hecke_operator_on_qexp(f, m, self.weight().k(), eps=self.weight().chi())
 
-
-
     def _convert_to_basis(self, qexp):
         r"""
         Given a `q`-expansion, converts it to a vector in the basis of this
         space, to the maximum possible precision (which is the minimum of the
-        `q`-adic precision of the `q`-expansion and the precision of self).
+        `q`-adic precision of the `q`-expansion and the precision of ``self``).
 
         EXAMPLES::
 
@@ -1014,7 +1010,6 @@ class OverconvergentModularFormsSpace(Module):
                             if j <= self.prime() * i:
                                 raise ValueError("n is too large computing initial conds: can't work out u[%s,%s]" % (i,j))
                         mat[i,j] = 0
-
 
                 else:
                     l = self._convert_to_basis(self.hecke_operator(self._basis_cache[j], m))
@@ -1211,7 +1206,6 @@ class OverconvergentModularFormsSpace(Module):
         self._cached_recurrence_matrix.set_immutable()
         return self._cached_recurrence_matrix
 
-
     def _discover_recurrence_matrix(self, use_smithline=True):
         r"""
         Does hard work of calculating recurrence matrix, which is cached to avoid doing this every time.
@@ -1330,10 +1324,11 @@ class OverconvergentModularFormElement(ModuleElement):
         self._eigenvalue = None
         self._slope = None
 
-
     def _add_(self, other):
         r"""
-        Add self to other (where other has the same parent as self).
+        Add ``self`` to ``other``.
+
+        Here ``other`` has the same parent as ``self``.
 
         EXAMPLES::
 
@@ -1652,6 +1647,8 @@ class OverconvergentModularFormElement(ModuleElement):
             sage: f.valuation_plot()
             Graphics object consisting of 1 graphics primitive
         """
+        from sage.plot.plot import plot
+
         if rmax is None:
             rmax = ZZ(self.prime()) / ZZ(1 + self.prime())
         return plot(self.r_ord, (0, rmax))

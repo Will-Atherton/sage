@@ -42,7 +42,7 @@ class FunctionFields(Category):
             sage: FunctionFields().super_categories()
             [Category of fields]
         """
-        return[Fields()]
+        return [Fields()]
 
     def _call_(self, x):
         r"""
@@ -65,7 +65,7 @@ class FunctionFields(Category):
         try:
             return x.function_field()
         except AttributeError:
-            raise  TypeError("unable to canonically associate a function field to %s"%x)
+            raise TypeError("unable to canonically associate a function field to %s" % x)
 
     class ParentMethods:
         pass
