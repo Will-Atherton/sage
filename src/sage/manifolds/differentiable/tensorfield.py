@@ -69,6 +69,7 @@ if TYPE_CHECKING:
     from sage.manifolds.differentiable.poisson_tensor import PoissonTensorField
     from sage.manifolds.differentiable.symplectic_form import SymplecticForm
     from sage.manifolds.differentiable.vectorfield_module import VectorFieldModule
+    from sage.manifolds.point import ManifoldPoint
     from sage.tensor.modules.comp import Components
 
 
@@ -176,8 +177,8 @@ class TensorField(ModuleElementWithMutability):
         Module T^(0,2)(S^2) of type-(0,2) tensors fields on the 2-dimensional
          differentiable manifold S^2
         sage: t.parent().category()
-        Category of modules over Algebra of differentiable scalar fields on the
-         2-dimensional differentiable manifold S^2
+        Category of tensor products of modules over Algebra of differentiable scalar fields
+         on the 2-dimensional differentiable manifold S^2
 
     The parent of `t` is not a free module, for the sphere `S^2` is not
     parallelizable::
@@ -3634,7 +3635,7 @@ class TensorField(ModuleElementWithMutability):
 
     lie_der = lie_derivative
 
-    def at(self, point):
+    def at(self, point: ManifoldPoint) -> FreeModuleTensor:
         r"""
         Value of ``self`` at a point of its domain.
 

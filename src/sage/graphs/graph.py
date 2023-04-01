@@ -440,7 +440,7 @@ class Graph(GenericGraph):
     pre-defined graphs, see the :mod:`~sage.graphs.graph_generators` module.
 
     A :class:`Graph` object has many methods whose list can be obtained by
-    typing ``g.<tab>`` (i.e. hit the 'tab' key) or by reading the documentation
+    typing ``g.<tab>`` (i.e. hit the :kbd:`Tab` key) or by reading the documentation
     of :mod:`~sage.graphs.graph`, :mod:`~sage.graphs.generic_graph`, and
     :mod:`~sage.graphs.digraph`.
 
@@ -569,6 +569,11 @@ class Graph(GenericGraph):
     - ``immutable`` -- boolean (default: ``False``); whether to create a
       immutable graph. Note that ``immutable=True`` is actually a shortcut for
       ``data_structure='static_sparse'``. Set to ``False`` by default.
+
+    - ``hash_labels`` -- boolean (default: ``None``); whether to include edge
+      labels during hashing. This parameter defaults to ``True`` if the graph is
+      weighted. This parameter is ignored if the graph is mutable.
+      Beware that trying to hash unhashable labels will raise an error.
 
     - ``vertex_labels`` -- boolean (default: ``True``); whether to allow any
       object as a vertex (slower), or only the integers `0,...,n-1`, where `n`
@@ -910,7 +915,7 @@ class Graph(GenericGraph):
                  weighted=None, data_structure="sparse",
                  vertex_labels=True, name=None,
                  multiedges=None, convert_empty_dict_labels_to_None=None,
-                 sparse=True, immutable=False):
+                 sparse=True, immutable=False, hash_labels=None):
         """
         TESTS::
 
@@ -1252,6 +1257,10 @@ class Graph(GenericGraph):
         if weighted is None:
             weighted = False
         self._weighted = getattr(self, '_weighted', weighted)
+
+        if hash_labels is None and hasattr(data, '_hash_labels'):
+            hash_labels = data._hash_labels
+        self._hash_labels = hash_labels
 
         self._pos = copy(pos)
 
@@ -7051,7 +7060,7 @@ class Graph(GenericGraph):
             ...
             ValueError: the algorithm must be "Cliquer", "MILP" or "mcqd"
 
-        Ticket :trac:`24287` is fixed::
+        Issue :trac:`24287` is fixed::
 
             sage: G = Graph([(0,1)]*5 + [(1,2)]*2, multiedges=True)
             sage: G.vertex_cover(reduction_rules=True, algorithm='MILP')
@@ -7059,7 +7068,7 @@ class Graph(GenericGraph):
             sage: G.vertex_cover(reduction_rules=False)
             [1]
 
-        Ticket :trac:`25988` is fixed::
+        Issue :trac:`25988` is fixed::
 
             sage: B = BipartiteGraph(graphs.CycleGraph(6))
             sage: B.vertex_cover(algorithm='Cliquer', reduction_rules=True)

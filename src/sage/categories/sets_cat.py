@@ -1878,13 +1878,14 @@ Please use, e.g., S.algebra(QQ, category=Semigroups())""".format(self))
                 cls = ImageSubobject
             return cls(self, domain_subset)
 
+    # Lazy imports to avoid circularity issues.
     Enumerated = LazyImport('sage.categories.enumerated_sets', 'EnumeratedSets', at_startup=True)
-    Facade = LazyImport('sage.categories.facade_sets', 'FacadeSets')
     Finite = LazyImport('sage.categories.finite_sets', 'FiniteSets', at_startup=True)
     Topological = LazyImport('sage.categories.topological_spaces',
                              'TopologicalSpaces', 'Topological', at_startup=True)
     Metric = LazyImport('sage.categories.metric_spaces', 'MetricSpaces',
                         'Metric', at_startup=True)
+    from sage.categories.facade_sets import FacadeSets as Facade
 
     class Infinite(CategoryWithAxiom):
 
@@ -2213,7 +2214,6 @@ Please use, e.g., S.algebra(QQ, category=Semigroups())""".format(self))
             S2 = InfiniteEnumeratedSets().example()
             S3 = FiniteEnumeratedSets().example()
             return cartesian_product([S1, S2, S3])
-
 
         class ParentMethods:
             def __iter__(self):

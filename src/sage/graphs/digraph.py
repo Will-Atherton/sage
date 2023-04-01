@@ -192,7 +192,7 @@ class DiGraph(GenericGraph):
     pre-defined digraphs, see the :mod:`~sage.graphs.digraph_generators` module.
 
     A :class:`DiGraph` object has many methods whose list can be obtained by
-    typing ``g.<tab>`` (i.e. hit the 'tab' key) or by reading the documentation
+    typing ``g.<tab>`` (i.e. hit the :kbd:`Tab` key) or by reading the documentation
     of :mod:`~sage.graphs.digraph`, :mod:`~sage.graphs.generic_graph`, and
     :mod:`~sage.graphs.graph`.
 
@@ -314,6 +314,11 @@ class DiGraph(GenericGraph):
     - ``immutable`` -- boolean (default: ``False``); whether to create a
       immutable digraph. Note that ``immutable=True`` is actually a shortcut for
       ``data_structure='static_sparse'``.
+
+    - ``hash_labels`` -- boolean (default: ``None``); whether to include edge
+      labels during hashing. This parameter defaults to ``True`` if the digraph
+      is weighted. This parameter is ignored if the digraph is mutable.
+      Beware that trying to hash unhashable labels will raise an error.
 
     - ``vertex_labels`` -- boolean (default: ``True``); whether to allow any
       object as a vertex (slower), or only the integers `0,...,n-1`, where `n`
@@ -517,7 +522,7 @@ class DiGraph(GenericGraph):
                  weighted=None, data_structure="sparse",
                  vertex_labels=True, name=None,
                  multiedges=None, convert_empty_dict_labels_to_None=None,
-                 sparse=True, immutable=False):
+                 sparse=True, immutable=False, hash_labels=None):
         """
         TESTS::
 
@@ -842,6 +847,10 @@ class DiGraph(GenericGraph):
         # weighted, multiedges, loops, verts and num_verts should now be set
         self._weighted = weighted
 
+        if hash_labels is None and hasattr(data, '_hash_labels'):
+            hash_labels = data._hash_labels
+        self._hash_labels = hash_labels
+
         self._pos = copy(pos)
 
         if format != 'DiGraph' or name is not None:
@@ -856,6 +865,7 @@ class DiGraph(GenericGraph):
             self._immutable = True
 
     # Formats
+
     def dig6_string(self):
         r"""
         Return the ``dig6`` representation of the digraph as an ASCII string.
@@ -1567,7 +1577,7 @@ class DiGraph(GenericGraph):
 
         TESTS:
 
-        Comparing with/without constraint generation. Also double-checks ticket
+        Comparing with/without constraint generation. Also double-checks issue
         :trac:`12833`::
 
             sage: for i in range(20):
@@ -3472,7 +3482,7 @@ class DiGraph(GenericGraph):
 
             :meth:`is_aperiodic`
         """
-        from sage.arith.all import gcd
+        from sage.arith.misc import GCD as gcd
 
         g = 0
 
