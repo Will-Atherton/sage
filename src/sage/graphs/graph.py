@@ -7770,7 +7770,7 @@ class Graph(GenericGraph):
             return list(core.values())
 
     @doc_index("Leftovers")
-    def modular_decomposition(self, algorithm=None, style='tuple'):
+    def modular_decomposition(self, algorithm="habib_maurer", style='tuple'):
         r"""
         Return the modular decomposition of the current graph.
 
@@ -7938,12 +7938,10 @@ class Graph(GenericGraph):
         """
         from sage.graphs.graph_decompositions.modular_decomposition import (NodeType,
                                                                             habib_maurer_algorithm,
+                                                                            tedder_algorithm,
                                                                             create_prime_node,
                                                                             create_normal_node)
 
-        if algorithm is not None:
-            from sage.misc.superseded import deprecation
-            deprecation(25872, "algorithm=... parameter is obsolete and has no effect.")
         self._scream_if_not_simple()
 
         if not self.order():
@@ -7952,7 +7950,10 @@ class Graph(GenericGraph):
             D = create_prime_node()
             D.children.append(create_normal_node(self.vertices(sort=False)[0]))
         else:
-            D = habib_maurer_algorithm(self)
+            if algorithm == "habib_maurer":
+                D = habib_maurer_algorithm(self)
+            else:
+                D = tedder_algorithm(self)
 
         if style == 'tuple':
             if D is None:
