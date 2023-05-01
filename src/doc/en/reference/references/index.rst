@@ -6027,6 +6027,8 @@ REFERENCES:
 
 .. [TCHP2008] Marc Tedder, Derek Corneil, Michel Habib and Christophe Paul,
               *Simple, linear-time modular decomposition*, 2008.
+              (https://mathscinet.ams.org/mathscinet-getitem?mr=2500307)
+              :doi:`https://doi.org/10.1007/978-3-540-70575-8_52`.
               :arxiv:`0710.3901`.
 
 .. [Tee1997] Tee, Garry J. "Continuous branches of inverses of the 12

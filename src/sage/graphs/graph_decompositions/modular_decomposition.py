@@ -4580,3 +4580,32 @@ def recreate_decomposition(trials, algorithm, max_depth, max_fan_out,
         assert(equivalent_trees(rand_tree, reconstruction))
         if verbose:
             print("Passes!")
+
+def single_timed_test(vertices):
+    from sage.graphs.generators.random import RandomGNP
+    import time
+    import random
+    g = RandomGNP(vertices, random.Random())
+    start_time = time.time()
+    t1 = tedder_algorithm(g)
+    tedder_time = time.time() - start_time
+    start_time = time.time()
+    t2 = habib_maurer_algorithm(g)
+    habib_time = time.time() - start_time
+    assert(equivalent_trees(t1, t2))
+    return (tedder_time, habib_time)
+
+
+def timing_test(max_vert, trials_per_vert_count, vert_step):
+    average_times = []
+    for i in range(vert_step, max_vert+1, vert_step):
+        total_tedder_time = 0
+        total_habib_time = 0
+        for _ in range(trials_per_vert_count):
+            (tedder_time, habib_time) = single_timed_test(i)
+            total_tedder_time += tedder_time
+            total_habib_time += habib_time
+            print(".")
+        average_times.append((i, total_tedder_time/trials_per_vert_count, total_habib_time/trials_per_vert_count))
+        print(str(i) + " done.")
+    print(average_times)
